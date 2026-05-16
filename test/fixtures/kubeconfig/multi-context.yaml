@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Config
+current-context: kind-dev
+clusters:
+  - name: kind-dev
+    cluster:
+      server: https://127.0.0.1:6443
+      insecure-skip-tls-verify: true
+  - name: prod-eks
+    cluster:
+      server: https://prod.example.com
+contexts:
+  - name: kind-dev
+    context:
+      cluster: kind-dev
+      user: kind-dev
+      namespace: default
+  - name: prod-eks
+    context:
+      cluster: prod-eks
+      user: aws-iam
+users:
+  - name: kind-dev
+    user:
+      client-certificate-data: ZmFrZQ==
+      client-key-data: ZmFrZQ==
+  - name: aws-iam
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1beta1
+        command: aws
+        args: ["eks", "get-token"]

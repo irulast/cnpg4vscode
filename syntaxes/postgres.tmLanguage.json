@@ -1,0 +1,49 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PostgreSQL",
+  "scopeName": "source.postgres",
+  "patterns": [
+    { "include": "#pg-specific" },
+    { "include": "source.sql" }
+  ],
+  "repository": {
+    "pg-specific": {
+      "patterns": [
+        { "include": "#dollar-quoted" },
+        { "include": "#pg-keywords" },
+        { "include": "#pg-types" }
+      ]
+    },
+    "dollar-quoted": {
+      "name": "string.quoted.dollar.postgres",
+      "begin": "\\$([A-Za-z_][A-Za-z0-9_]*)?\\$",
+      "end": "\\$([A-Za-z_][A-Za-z0-9_]*)?\\$",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.postgres" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.postgres" }
+      }
+    },
+    "pg-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.other.postgres",
+          "match": "(?i)\\b(RETURNING|ILIKE|SIMILAR\\s+TO|LATERAL|TABLESAMPLE|FETCH|OVERLAPS|OFFSET|WITHIN\\s+GROUP|FILTER|WINDOW|PARTITION\\s+BY|EXCLUDE|TIES|FOLLOWING|PRECEDING|UNBOUNDED|RANGE|ROWS|GROUPS|MATERIALIZED|UNLOGGED|TEMP|TEMPORARY|CONCURRENTLY|REINDEX|VACUUM|CLUSTER|EXPLAIN|ANALYZE|COPY|GRANT|REVOKE|POLICY|ROW\\s+LEVEL\\s+SECURITY)\\b"
+        },
+        {
+          "name": "support.function.postgres",
+          "match": "(?i)\\b(now|current_timestamp|current_date|current_time|coalesce|nullif|greatest|least|to_char|to_date|to_number|to_timestamp|extract|date_trunc|age|generate_series|unnest|array_agg|string_agg|jsonb_agg|json_agg|jsonb_build_object|json_build_object|row_to_json|to_jsonb|to_json|gen_random_uuid|nextval|setval|currval)\\b(?=\\s*\\()"
+        }
+      ]
+    },
+    "pg-types": {
+      "patterns": [
+        {
+          "name": "storage.type.postgres",
+          "match": "(?i)\\b(serial|bigserial|smallserial|jsonb?|uuid|inet|cidr|macaddr|tsvector|tsquery|bytea|interval|timestamp(?:tz)?|timetz|hstore|citext|ltree|xml|money|point|line|lseg|box|path|polygon|circle|numeric|decimal|double\\s+precision|real|smallint|integer|bigint|bit\\s+varying|character\\s+varying|varchar|text)\\b"
+        }
+      ]
+    }
+  }
+}

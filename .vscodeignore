@@ -1,0 +1,43 @@
+# Source and tests — only the bundled dist/ ships
+src/**
+test/**
+specs/**
+eslint-plugins/**
+node_modules/.cache/**
+
+# Spec-kit and config
+.specify/**
+.specify-rules/**
+.github/**
+.vscode/**
+.vscode-test/**
+
+# Dev configs not needed at runtime
+tsconfig.json
+vitest.config.ts
+.vscode-test.mjs
+esbuild.config.mjs
+.eslintrc.cjs
+.gitignore
+scripts/**
+pnpm-lock.yaml
+
+# OS / editor noise
+.DS_Store
+*.log
+*.swp
+
+# Source maps in production — keep dist/ except .map files
+dist/**/*.map
+
+# We ship the language config + grammar + snippets + dist
+!dist/**
+!dist/**/*.js
+!languages/**
+!syntaxes/**
+!snippets/**
+!README.md
+!CHANGELOG.md
+!LICENSE
+!THIRD_PARTY_LICENSES
+!package.json

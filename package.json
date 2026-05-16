@@ -1,0 +1,294 @@
+{
+  "name": "cnpg4vscode",
+  "displayName": "CloudNativePG for VS Code",
+  "description": "Browse, inspect, and manage CloudNativePG PostgreSQL clusters from VS Code.",
+  "version": "0.0.1",
+  "publisher": "cnpg4vscode",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=20.0.0"
+  },
+  "categories": ["Notebooks", "Other"],
+  "keywords": ["postgres", "postgresql", "kubernetes", "cnpg", "cloudnative-pg", "k8s", "database", "sql"],
+  "qna": "marketplace",
+  "preview": true,
+  "extensionKind": ["workspace"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/irulast/cnpg4vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/irulast/cnpg4vscode/issues"
+  },
+  "homepage": "https://github.com/irulast/cnpg4vscode#readme",
+  "main": "./dist/extension.js",
+  "extensionDependencies": [
+    "bierner.markdown-mermaid"
+  ],
+  "activationEvents": [
+    "onLanguage:sql"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "cnpg.refresh", "title": "Refresh", "category": "CNPG", "icon": "$(refresh)" },
+      { "command": "cnpg.cluster.showDetails", "title": "Show Cluster Details", "category": "CNPG" },
+      { "command": "cnpg.cluster.connect", "title": "Connect", "category": "CNPG" },
+      { "command": "cnpg.cluster.disconnect", "title": "Disconnect", "category": "CNPG" },
+      { "command": "cnpg.connection.toggleWriteMode", "title": "Toggle Write Mode", "category": "CNPG", "enablement": "cnpg.activeConnection" },
+      { "command": "cnpg.notebook.new", "title": "New SQL Notebook", "category": "CNPG" },
+      { "command": "cnpg.notebook.saveToCluster", "title": "Save Notebook to Cluster", "category": "CNPG", "enablement": "notebookType == cnpg-sql" },
+      { "command": "cnpg.notebook.openSaved", "title": "Open Saved Notebook", "category": "CNPG", "enablement": "false" },
+      { "command": "cnpg.runFromSqlFile", "title": "Run Statement (from .sql file)", "category": "CNPG" },
+      { "command": "cnpg.tree.copyName", "title": "Copy Fully-Qualified Name", "category": "CNPG" },
+      { "command": "cnpg.tree.openDefinition", "title": "Open Definition", "category": "CNPG" },
+      { "command": "cnpg.tree.browseRows", "title": "Browse Rows", "category": "CNPG" },
+      { "command": "cnpg.tree.countRows", "title": "Count Rows", "category": "CNPG" },
+      { "command": "cnpg.tree.insertTemplate", "title": "Generate INSERT Template", "category": "CNPG" },
+      { "command": "cnpg.tree.drop", "title": "Drop...", "category": "CNPG" },
+      { "command": "cnpg.tree.truncate", "title": "Truncate...", "category": "CNPG" },
+      { "command": "cnpg.tree.reindex", "title": "REINDEX...", "category": "CNPG" },
+      { "command": "cnpg.tree.alterScaffold", "title": "Scaffold ALTER...", "category": "CNPG" },
+      { "command": "cnpg.editor.index.create", "title": "New Index...", "category": "CNPG" },
+      { "command": "cnpg.editor.constraint.create", "title": "New Constraint...", "category": "CNPG" },
+      { "command": "cnpg.migration.open", "title": "Open Migration Wizard", "category": "CNPG" },
+      { "command": "cnpg.er.open", "title": "Show ER Diagram", "category": "CNPG" },
+      { "command": "cnpg.history.open", "title": "Open Query History", "category": "CNPG" },
+      { "command": "cnpg.history.clear", "title": "Clear Query History", "category": "CNPG" },
+      { "command": "cnpg.reportProblem", "title": "Report a Problem", "category": "CNPG" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cnpg",
+          "title": "CloudNativePG",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "cnpg": [
+        { "id": "cnpg.clusters", "name": "Clusters" },
+        { "id": "cnpg.schema", "name": "Schema", "when": "cnpg.activeConnection" }
+      ]
+    },
+    "notebooks": [
+      {
+        "type": "cnpg-sql",
+        "displayName": "CNPG SQL Notebook",
+        "selector": [{ "filenamePattern": "*.cnpg-sql" }]
+      }
+    ],
+    "notebookRenderer": [
+      {
+        "id": "cnpg-result-renderer",
+        "displayName": "CNPG Result Grid",
+        "entrypoint": "./dist/notebook-renderer.js",
+        "mimeTypes": ["application/x-cnpg-result+json"]
+      }
+    ],
+    "languages": [
+      {
+        "id": "postgres",
+        "aliases": ["PostgreSQL", "postgres"],
+        "extensions": [".pgsql"],
+        "configuration": "./languages/postgres-language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "postgres",
+        "scopeName": "source.postgres",
+        "path": "./syntaxes/postgres.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "postgres",
+        "path": "./snippets/postgres.code-snippets"
+      },
+      {
+        "language": "sql",
+        "path": "./snippets/postgres.code-snippets"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "cnpg.refresh", "when": "view == cnpg.clusters", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "cnpg.cluster.showDetails", "when": "view == cnpg.clusters && viewItem == cluster", "group": "cnpg@1" },
+        { "command": "cnpg.cluster.connect", "when": "view == cnpg.clusters && viewItem == cluster && !cnpg.cluster.connected", "group": "cnpg@2" },
+        { "command": "cnpg.cluster.disconnect", "when": "view == cnpg.clusters && viewItem == cluster && cnpg.cluster.connected", "group": "cnpg@2" },
+        { "command": "cnpg.tree.copyName", "when": "view == cnpg.schema", "group": "cnpg@1" },
+        { "command": "cnpg.er.open", "when": "view == cnpg.schema && viewItem =~ /^(connection|schema)$/", "group": "cnpg@1" },
+        { "command": "cnpg.tree.openDefinition", "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView|function|procedure|trigger|index|constraint)$/", "group": "cnpg@2" },
+        { "command": "cnpg.tree.browseRows", "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView)$/", "group": "cnpg@2" },
+        { "command": "cnpg.tree.countRows", "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView)$/", "group": "cnpg@2" },
+        { "command": "cnpg.tree.insertTemplate", "when": "view == cnpg.schema && viewItem == table", "group": "cnpg@2" },
+        { "command": "cnpg.editor.index.create", "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode", "group": "cnpg.write@1" },
+        { "command": "cnpg.editor.constraint.create", "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode", "group": "cnpg.write@1" },
+        { "command": "cnpg.tree.drop", "when": "view == cnpg.schema && cnpg.connection.writeMode", "group": "cnpg.destructive@1" },
+        { "command": "cnpg.tree.truncate", "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode", "group": "cnpg.destructive@2" },
+        { "command": "cnpg.tree.reindex", "when": "view == cnpg.schema && viewItem =~ /^(table|index)$/ && cnpg.connection.writeMode", "group": "cnpg.destructive@3" },
+        { "command": "cnpg.tree.alterScaffold", "when": "view == cnpg.schema && cnpg.connection.writeMode", "group": "cnpg.destructive@4" }
+      ],
+      "editor/context": [
+        { "command": "cnpg.runFromSqlFile", "when": "(editorLangId == sql || editorLangId == postgres) && cnpg.activeConnection && !inNotebookEditor", "group": "cnpg@1" }
+      ]
+    },
+    "configuration": {
+      "title": "CloudNativePG",
+      "properties": {
+        "cnpg4vscode.log.level": {
+          "type": "string",
+          "enum": ["off", "error", "warn", "info", "debug", "trace"],
+          "default": "info",
+          "scope": "application",
+          "description": "Verbosity of the cnpg4vscode log output channel."
+        },
+        "cnpg4vscode.refreshIntervalSeconds": {
+          "type": "number",
+          "minimum": 5,
+          "default": 30,
+          "description": "Cluster-tree auto-refresh cadence in seconds."
+        },
+        "cnpg4vscode.tunnel.bindAddress": {
+          "type": "string",
+          "enum": ["127.0.0.1"],
+          "default": "127.0.0.1",
+          "description": "Local interface for port-forwards. Only loopback is permitted."
+        },
+        "cnpg4vscode.tunnel.maxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 5,
+          "description": "Reconnect attempts before a tunnel transitions to error."
+        },
+        "cnpg4vscode.tunnel.probeIntervalSeconds": {
+          "type": "number",
+          "minimum": 5,
+          "maximum": 300,
+          "default": 30,
+          "description": "Liveness probe (SELECT 1) cadence in seconds."
+        },
+        "cnpg4vscode.connection.defaultMode": {
+          "type": "string",
+          "enum": ["readonly", "write"],
+          "default": "readonly",
+          "description": "Reserved. Per FR-020 every connection opens read-only; setting this to 'write' is rejected at runtime and forced back to 'readonly'."
+        },
+        "cnpg4vscode.connection.defaultDatabase": {
+          "type": "string",
+          "default": "",
+          "description": "Fallback database name when the chosen Secret omits a dbname."
+        },
+        "cnpg4vscode.results.pageSize": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 10000,
+          "default": 1000,
+          "description": "Rows per page for pg-cursor-backed result grids."
+        },
+        "cnpg4vscode.results.maxInMemoryRows": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 100000,
+          "default": 10000,
+          "description": "Hard cap on retained rows in the grid."
+        },
+        "cnpg4vscode.history.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch for per-workspace query history."
+        },
+        "cnpg4vscode.history.retentionDays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650,
+          "default": 90,
+          "description": "Auto-prune entries older than N days at activation. 0 disables time-based pruning."
+        },
+        "cnpg4vscode.history.maxEntries": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 100000,
+          "description": "Hard cap on retained entries; oldest pruned first."
+        },
+        "cnpg4vscode.notebooks.location": {
+          "type": "string",
+          "default": ".cnpg/notebooks",
+          "scope": "resource",
+          "description": "Workspace-relative root for the per-cluster notebook convention path used by CNPG: Save Notebook to Cluster and the cluster-tree's saved-notebook child nodes (FR-037). Must not begin with '/' or '..'."
+        },
+        "cnpg4vscode.redaction.extraPatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional regex patterns appended to the credential-literal ruleset."
+        },
+        "cnpg4vscode.confirmation.requireTypedName": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, destructive tree actions require typing the fully-qualified name. Disabling this is logged at WARN on every destructive action."
+        },
+        "cnpg4vscode.er.warnOverTables": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 1000,
+          "default": 100,
+          "description": "Show a warning before rendering an ER diagram beyond this many tables."
+        },
+        "cnpg4vscode.er.layout": {
+          "type": "string",
+          "enum": ["layered", "force", "stress"],
+          "default": "layered",
+          "description": "ELK layout algorithm for ER diagrams."
+        },
+        "cnpg4vscode.theme.honorEditorFont": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, webviews adopt editor.fontFamily and editor.fontSize."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs --production",
+    "build:dev": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "pnpm test:unit && pnpm test:contract && pnpm test:e2e",
+    "test:unit": "vitest run test/unit",
+    "test:contract": "vitest run test/contract",
+    "test:e2e": "vscode-test",
+    "audit:deps": "node scripts/audit-deps.mjs",
+    "audit:csp": "node scripts/audit-webview-csp.mjs",
+    "package": "node scripts/package.mjs",
+    "vscode:prepublish": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "@types/pg": "^8.11.0",
+    "@types/vscode": "^1.85.0",
+    "@types/vscode-notebook-renderer": "^1.72.3",
+    "@typescript-eslint/eslint-plugin": "^7.7.0",
+    "@typescript-eslint/parser": "^7.7.0",
+    "@typescript-eslint/utils": "^7.7.0",
+    "@vscode/test-cli": "^0.0.9",
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-cnpg-local": "file:./eslint-plugins/eslint-plugin-cnpg-local",
+    "license-checker": "^25.0.1",
+    "typescript": "^5.4.0",
+    "vitest": "^1.5.0"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "^0.21.0",
+    "pg": "^8.11.0"
+  }
+}
