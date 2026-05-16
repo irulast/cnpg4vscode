@@ -235,6 +235,70 @@ and where applicable a **Lifecycle** state machine.
   - If the underlying tunnel transitions to `closing` while edits are
     `staged`, all stages are dropped with a user-visible warning.
 
+## Grid Editor State (persisted layout primitives)
+
+- **Identity**: `(contextName, namespace, clusterName, database, schema,
+  table)` — same shape as the per-cluster notebook folder key plus
+  `(schema, table)`.
+- **Attributes** (FR-039):
+  - `columnOrder: string[]` — column names in the user's preferred
+    display order.
+  - `hiddenColumns: string[]` — columns the user chose to hide.
+  - `columnWidths: Record<column, number>` — per-column pixel width.
+  - `sort: { column: string; dir: 'asc' | 'desc' }[]` — multi-column
+    sort, ordered by sort precedence.
+  - `filters: { column: string; op: 'eq' | 'ne' | 'lt' | 'le' | 'gt' |
+    'ge' | 'like' | 'ilike' | 'is_null' | 'is_not_null'; value?:
+    string }[]` — single-column filter predicates ANDed together when
+    rebuilding the SELECT.
+  - `frozenColumnCount: number` — leading columns to lock when
+    horizontally scrolling.
+  - `scrollTop: number` — pixel offset, restored on reopen.
+  - `lastOpenedAt: number` — UTC ms, used by an eventual eviction pass
+    when persistence grows unbounded.
+- **Relationships**: scoped to a **Database Connection** by the
+  `(context/ns/cluster/database)` prefix; multiple connections to the
+  same database share the state. Detached from any open **Grid Editor
+  Session** — state survives session close.
+- **Validation rules** (FR-039):
+  - State NEVER contains cell data — only layout primitives. The
+    persistence-write site MUST reject any field outside the
+    enumerated list above (defense-in-depth against accidental row
+    spill, mirroring the redaction-store guard in `history.ts`).
+  - Persisted via `context.workspaceState` (per-workspace, not global).
+  - Filter `value` MUST be string-typed; type coercion happens at
+    SELECT-building time so the persisted layout doesn't bake in a
+    specific PG type (the column's type could change via ALTER).
+
+## Grid Editor Session (in-memory only)
+
+- **Identity**: `(panel.viewType, connectionId, schema, table)`.
+- **Attributes**:
+  - `panel: vscode.WebviewPanel` — owning tab.
+  - `connectionId: string` — the bound DatabaseConnection.
+  - `descriptor: ResultSetDescriptor` — column types, PK columns,
+    per-column FK target (if any), enum allowed values.
+  - `window: { offset: number; limit: number; rows: ReadonlyArray<...> }`
+    — current paged view of the result set; replaced on scroll.
+  - `dirtyEdits: Map<RowKey, Record<column, ColumnChange>>` — pending
+    cell edits keyed by PK. Cleared on Apply success or Revert.
+  - `selection: { startRow: number; endRow: number; ... }` — current
+    grid selection for bulk operations + export.
+- **Relationships**: one per open Grid Editor tab; multiple sessions
+  can target the same table (different filter / sort views). All
+  sessions for a given connection share the connection's `pg.Pool`.
+- **Lifecycle**: `opening → ready → applying → ready | failed`. On
+  `applying`, the dirty-edit set is frozen and passed to the cell-edit
+  orchestrator one row at a time; per-row outcomes update the grid
+  inline before returning to `ready`.
+- **Validation rules** (FR-037, FR-038):
+  - In-memory only — disposed on `panel.dispose()`. Reopening the same
+    table builds a fresh session from the persisted **Grid Editor
+    State** (above).
+  - When the bound DatabaseConnection's `mode` flips, the session
+    re-renders its toolbar (edit affordances enabled/disabled) but
+    does NOT discard pending edits.
+
 ## Schema Tree Node
 
 - **Identity**: `(connectionId, oid)`.

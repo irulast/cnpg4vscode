@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned (scoped, not yet implemented — see [tasks.md § Phase 8.5](specs/001-cnpg-cluster-explorer/tasks.md))
+
+- **Grid Editor surface (FR-037 / FR-038 / FR-039)**. A dedicated
+  `vscode.WebviewPanel` per open table, hosting glide-data-grid + React,
+  delivering full DB-IDE-parity tabular editing: virtualized rendering
+  for ≥100k rows, per-type cell editors (text / number / boolean / date /
+  jsonb / enum), per-column sort + filter + hide + freeze, dirty-row
+  tracking with bulk Apply, Add Row / Delete Selected, FK navigation
+  (right-click an FK cell → opens a new Grid Editor tab on the
+  referenced table), workspace-persisted layout state, theme-aware via
+  `--vscode-*` variables. Two entrypoints: right-click a TABLE in the
+  Schema view → **CNPG: Open in Grid Editor**, or the command palette
+  via **CNPG: Open Table in Grid Editor...**.
+
+  Diverges from the FR-035 "no webviews" simplification — see
+  [research §6 REVISED 2026-05-16](specs/001-cnpg-cluster-explorer/research.md)
+  and [plan.md § Complexity Tracking (2026-05-16)](specs/001-cnpg-cluster-explorer/plan.md)
+  for the rationale (every serious DB IDE uses a dedicated grid tab;
+  notebook outputs can't structurally deliver cell editing). The
+  lightweight NotebookRendererProvider (T104) stays as the inline
+  "just scanning" view; the Grid Editor opens on demand for editing.
+
 ### Added
 
 - Initial project scaffolding (TypeScript + esbuild + vsce, VS Code engine
