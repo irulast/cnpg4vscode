@@ -557,6 +557,66 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     deps.schemaProvider.refresh();
   });
 
+  reg("cnpg.grid.open", async (arg: unknown) => {
+    const node = asSchemaNode(arg);
+    if (!node || node.kind !== "relation") {
+      vscode.window.showInformationMessage(
+        "Right-click a table or view in the Schema view to open in the Grid Editor.",
+      );
+      return;
+    }
+    const { openGrid } = await import("../grid/registry.js");
+    await openGrid({
+      conn: node.conn,
+      schema: node.schema.name,
+      table: node.relation.name,
+    });
+  });
+
+  reg("cnpg.grid.openByName", async () => {
+    const session = getSession();
+    if (session.connections.size === 0) {
+      vscode.window.showInformationMessage(
+        "No active CNPG connection. Connect to a cluster first.",
+      );
+      return;
+    }
+    const conn =
+      session.connections.size === 1
+        ? [...session.connections.values()][0]!
+        : await pickConnection();
+    if (!conn) return;
+    const { Introspector } = await import("../pg/introspect.js");
+    const intros = new Introspector(conn.connection);
+    const schemas = await intros.schemas();
+    const pickedSchema = await vscode.window.showQuickPick(
+      schemas.map((s) => ({ label: s.name, schema: s })),
+      { title: "Schema", canPickMany: false, ignoreFocusOut: true },
+    );
+    if (!pickedSchema) return;
+    const rels = await intros.relations(pickedSchema.schema.oid);
+    const openable = rels.filter(
+      (r) => r.kind === "table" || r.kind === "view" || r.kind === "materializedView",
+    );
+    if (openable.length === 0) {
+      vscode.window.showInformationMessage(
+        `Schema ${pickedSchema.schema.name} has no tables or views to open.`,
+      );
+      return;
+    }
+    const pickedRel = await vscode.window.showQuickPick(
+      openable.map((r) => ({ label: r.name, description: r.kind, rel: r })),
+      { title: `Table in ${pickedSchema.schema.name}`, canPickMany: false, ignoreFocusOut: true },
+    );
+    if (!pickedRel) return;
+    const { openGrid } = await import("../grid/registry.js");
+    await openGrid({
+      conn,
+      schema: pickedSchema.schema.name,
+      table: pickedRel.rel.name,
+    });
+  });
+
   // Keep the status bar in sync with the active notebook editor's
   // selected controller. The Schema view visibility is managed by the
   // session-change listener in extension.ts (NEVER by editor focus).

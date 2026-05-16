@@ -160,6 +160,16 @@
         "category": "CNPG"
       },
       {
+        "command": "cnpg.grid.open",
+        "title": "Open in Grid Editor",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.grid.openByName",
+        "title": "Open Table in Grid Editor...",
+        "category": "CNPG"
+      },
+      {
         "command": "cnpg.er.open",
         "title": "Show ER Diagram",
         "category": "CNPG"
@@ -306,6 +316,11 @@
           "command": "cnpg.tree.insertTemplate",
           "when": "view == cnpg.schema && viewItem == table",
           "group": "cnpg@2"
+        },
+        {
+          "command": "cnpg.grid.open",
+          "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView)$/",
+          "group": "cnpg@3"
         },
         {
           "command": "cnpg.editor.index.create",

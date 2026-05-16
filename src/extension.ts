@@ -27,6 +27,7 @@ import {
 import { initHistory } from "./state/history.js";
 import { CnpgNotebookSerializer, CNPG_NOTEBOOK_TYPE } from "./notebook/host-serializer.js";
 import { CnpgNotebookController } from "./notebook/controller.js";
+import { disposeGridRegistry, initGridRegistry } from "./grid/registry.js";
 
 const CONFIG_SECTION = "cnpg4vscode";
 
@@ -70,6 +71,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   initStatusBar(context);
   initHistory(context);
+  initGridRegistry({
+    extensionUri: context.extensionUri,
+    workspaceState: context.workspaceState,
+  });
   registerCommands(context, { clustersProvider, schemaProvider });
 
   // Notebook serializer for cnpg-sql files (FR-035).
@@ -159,6 +164,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export async function deactivate(): Promise<void> {
   log.info("extension.deactivate", {});
+  disposeGridRegistry();
   await disposeSession();
   disposeLog();
 }
