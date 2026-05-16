@@ -536,6 +536,12 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     }
     const { openIndexEditor } = await import("./editors.js");
     await openIndexEditor(node);
+    // Refresh so a successful CREATE INDEX appears in the tree
+    // immediately (mirrors the destructive-action pattern above).
+    // We refresh unconditionally because an early return (e.g. cancel)
+    // only discards a cache that was probably still valid; the next
+    // user expansion re-queries lazily.
+    deps.schemaProvider.refresh();
   });
 
   reg("cnpg.editor.constraint.create", async (arg: unknown) => {
@@ -548,6 +554,7 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     }
     const { openConstraintEditor } = await import("./editors.js");
     await openConstraintEditor(node);
+    deps.schemaProvider.refresh();
   });
 
   // Keep the status bar in sync with the active notebook editor's
