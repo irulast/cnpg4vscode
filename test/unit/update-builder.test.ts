@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDelete,
+  buildInsert,
   buildUpdate,
   renderPreviewMarkdown,
   validateEditRequest,
@@ -266,5 +267,118 @@ describe("renderPreviewMarkdown()", () => {
       { operation: "DELETE", target: "public.users" },
     );
     expect(md.toLowerCase()).toMatch(/delete.*public\.users|public\.users.*delete/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildInsert() — T152
+// ---------------------------------------------------------------------------
+
+describe("buildInsert() — basic shapes", () => {
+  it("emits a parameterized INSERT with deterministic column order (sorted)", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: "users",
+      values: { name: "Alice", email: "a@x" },
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."users" ("email", "name") VALUES ($1, $2)',
+    );
+    expect(r.values).toEqual(["a@x", "Alice"]);
+  });
+
+  it("emits NULL as a literal (not a parameter) when a column value is null", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: "users",
+      values: { name: "Alice", nickname: null },
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."users" ("name", "nickname") VALUES ($1, NULL)',
+    );
+    expect(r.values).toEqual(["Alice"]);
+  });
+
+  it("emits DEFAULT keyword for column-default restoration", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: "users",
+      values: { name: "Alice", role: { sql: "DEFAULT" } },
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."users" ("name", "role") VALUES ($1, DEFAULT)',
+    );
+    expect(r.values).toEqual(["Alice"]);
+  });
+
+  it("emits typed-cast parameter for jsonb / uuid via typeHint", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: "events",
+      values: { id: "abc-uuid", payload: { value: "{}", typeHint: "jsonb" } },
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."events" ("id", "payload") VALUES ($1, $2::jsonb)',
+    );
+    expect(r.values).toEqual(["abc-uuid", "{}"]);
+  });
+
+  it("quotes identifiers (case-sensitive, whitespace, embedded quotes)", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: 'Order Items',
+      values: { 'Order ID': 7, 'Total"Price': "9.99" },
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."Order Items" ("Order ID", "Total""Price") VALUES ($1, $2)',
+    );
+    expect(r.values).toEqual([7, "9.99"]);
+  });
+
+  it("appends RETURNING clause when columns are specified", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: "users",
+      values: { name: "Alice" },
+      returning: ["id", "created_at"],
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."users" ("name") VALUES ($1) RETURNING "id", "created_at"',
+    );
+  });
+
+  it("supports RETURNING * via the literal sentinel", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: "users",
+      values: { name: "Alice" },
+      returning: "*",
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."users" ("name") VALUES ($1) RETURNING *',
+    );
+  });
+
+  it("emits an empty-values INSERT (use defaults) when values is {}", () => {
+    // PG syntax: INSERT INTO t DEFAULT VALUES;
+    const r = buildInsert({
+      schema: "public",
+      table: "users",
+      values: {},
+    });
+    expect(r.text).toBe('INSERT INTO "public"."users" DEFAULT VALUES');
+    expect(r.values).toEqual([]);
+  });
+
+  it("composes empty-values INSERT with RETURNING", () => {
+    const r = buildInsert({
+      schema: "public",
+      table: "users",
+      values: {},
+      returning: ["id"],
+    });
+    expect(r.text).toBe(
+      'INSERT INTO "public"."users" DEFAULT VALUES RETURNING "id"',
+    );
   });
 });
