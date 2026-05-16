@@ -489,13 +489,21 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     await showErDiagram(conn, scope);
   });
 
+  reg("cnpg.history.open", async () => {
+    const { showHistoryPicker } = await import("../state/history.js");
+    await showHistoryPicker();
+  });
+
+  reg("cnpg.history.clear", async () => {
+    const { clearHistory } = await import("../state/history.js");
+    await clearHistory();
+  });
+
   // Placeholders for commands pending later user stories.
   const futureCommands: ReadonlyArray<string> = [
     "cnpg.editor.index.create",
     "cnpg.editor.constraint.create",
     "cnpg.migration.open",
-    "cnpg.history.open",
-    "cnpg.history.clear",
   ];
   for (const id of futureCommands) {
     reg(id, () => {
