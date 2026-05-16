@@ -165,6 +165,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *(Initial revision incorrectly assumed Mermaid was built into VS
   Code; fixed same day after bug report.)*
 
+### Added (migration wizard)
+
+- **No-webview migration wizard** (T112 scope variant; FR-027). Two new
+  commands — **`CNPG: Open Migration Wizard`** opens an untitled `.sql`
+  document seeded with a starter banner; the user authors statements
+  there (with real editor affordances — multi-line, syntax highlighting,
+  snippets). **`CNPG: Run Migration (active SQL editor)`** picks up the
+  document text, splits it at top-level semicolons, classifies the set
+  (transactional vs non-transactional based on CREATE INDEX CONCURRENTLY
+  and friends), shows a modal preview with the per-statement breakdown
+  and a warning banner when non-transactional, executes via the new
+  `DatabaseConnection.withClient()` so `BEGIN/COMMIT/ROLLBACK` land on
+  one session, then offers to export the assembled SQL to
+  `migrations/YYYYMMDD-HHMMSS-migration.sql` in the workspace. Outcome
+  (success / failed-with-rollback / partially-applied) renders as a
+  markdown summary the user can copy or paste into a support thread.
+  *(Diverged from the spec's webview UX — a webview would re-introduce
+  the host↔renderer message protocol that the FR-035 notebook refactor
+  deliberately retired. Native modals + a real editor deliver the same
+  workflow with zero webview surface to theme.)* The pure orchestrator
+  (`src/sql/migration-flow.ts`) is unit-tested separately from the host
+  glue (11 assertions covering every flow branch); the engine itself
+  (`executeMigration` + `exportMigrationToSql`) has its own 21-assertion
+  contract suite from the earlier T097/T113/T114 round.
+
 ### Added (cluster detail enrichment)
 
 - **Per-pod status on the cluster detail surface (US2 enrichment).**

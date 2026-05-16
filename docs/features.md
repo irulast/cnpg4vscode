@@ -229,6 +229,39 @@ against the most-recently-active notebook's controller; if no
 notebook is open, it prompts you to pick a connection and creates
 one.
 
+## Migration wizard
+
+Author and run a multi-statement migration with transactional safety:
+
+1. **Command Palette** → **CNPG: Open Migration Wizard**.
+2. If multiple connections are active, pick the target. The command
+   opens an untitled `.sql` document seeded with a starter banner that
+   names the target cluster + database and explains the contract.
+3. Author your statements — separate them with `;`. You get the full
+   editor experience: multi-line, syntax highlighting via the SQL
+   grammar, snippets, vim mode if you have it.
+4. When ready, **Command Palette** → **CNPG: Run Migration (active SQL
+   editor)**. The wizard splits the document at top-level semicolons
+   and shows a modal preview:
+   - **Transactional mode** (default): `BEGIN` / `COMMIT` wrap the
+     statement set. Any failure rolls the whole set back.
+   - **Non-transactional mode**: triggered when the set contains DDL
+     that PostgreSQL refuses inside a transaction (`CREATE INDEX
+     CONCURRENTLY`, `VACUUM`, `ALTER SYSTEM`, etc.). The preview
+     surfaces a warning: a mid-set failure will leave the already-
+     applied prefix in place.
+5. Confirm and the migration runs against the active connection.
+6. After a successful run, you're offered to **Export** the assembled
+   SQL to `migrations/YYYYMMDD-HHMMSS-migration.sql` in your workspace
+   — credentials are redacted out of the exported text before it lands
+   on disk.
+7. Whatever the outcome (success / failed-with-rollback /
+   partially-applied), a markdown summary opens with the per-statement
+   breakdown so you can copy/paste into a support thread.
+
+The wizard requires a Write-mode connection — toggle write mode via
+the status bar's connection actions menu first.
+
 ## Diagnostics
 
 ### Output channel

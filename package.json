@@ -52,6 +52,7 @@
       { "command": "cnpg.editor.index.create", "title": "New Index...", "category": "CNPG" },
       { "command": "cnpg.editor.constraint.create", "title": "New Constraint...", "category": "CNPG" },
       { "command": "cnpg.migration.open", "title": "Open Migration Wizard", "category": "CNPG" },
+      { "command": "cnpg.migration.run", "title": "Run Migration (active SQL editor)", "category": "CNPG" },
       { "command": "cnpg.er.open", "title": "Show ER Diagram", "category": "CNPG" },
       { "command": "cnpg.history.open", "title": "Open Query History", "category": "CNPG" },
       { "command": "cnpg.history.clear", "title": "Clear Query History", "category": "CNPG" },

@@ -12,7 +12,7 @@
  * mode rejects writes regardless of what code path is sending the SQL.
  */
 
-import type { PoolConfig, Pool } from "pg";
+import type { PoolConfig, Pool, PoolClient } from "pg";
 import pg from "pg";
 
 export type ConnectionMode = "readonly" | "write";
@@ -103,6 +103,28 @@ export class DatabaseConnection {
         }
       }
       return await client.query(sql, params as unknown[]);
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Borrow a single client from the pool and pass it to `cb`. The
+   * client is released back to the pool on return (success or throw).
+   * Use this when a single logical operation needs multiple
+   * `query()` calls to land on the same backend session — e.g. an
+   * explicit BEGIN/COMMIT-managed migration where the wrap and the
+   * statements MUST share a session, which `query()` cannot guarantee
+   * because it acquires a fresh client per call.
+   *
+   * The cb sees the raw `pg.PoolClient` so it can speak the full
+   * protocol; the read-only `SET LOCAL` gate is NOT auto-applied here
+   * (the caller is expected to manage its own transaction discipline).
+   */
+  async withClient<T>(cb: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      return await cb(client);
     } finally {
       client.release();
     }

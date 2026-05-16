@@ -502,11 +502,34 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     await clearHistory();
   });
 
+  reg("cnpg.migration.open", async () => {
+    const { openMigrationWizard } = await import("./migration.js");
+    await openMigrationWizard();
+  });
+
+  reg("cnpg.migration.run", async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== "sql") {
+      vscode.window.showInformationMessage(
+        "Open a .sql document (or run 'CNPG: Open Migration Wizard') first.",
+      );
+      return;
+    }
+    const target = activeNotebookConnection() ?? mostRecentNotebookConnection();
+    if (!target) {
+      vscode.window.showInformationMessage(
+        "No active CNPG connection. Connect to a cluster first.",
+      );
+      return;
+    }
+    const { runMigrationFromEditor } = await import("./migration.js");
+    await runMigrationFromEditor(editor, target);
+  });
+
   // Placeholders for commands pending later user stories.
   const futureCommands: ReadonlyArray<string> = [
     "cnpg.editor.index.create",
     "cnpg.editor.constraint.create",
-    "cnpg.migration.open",
   ];
   for (const id of futureCommands) {
     reg(id, () => {
