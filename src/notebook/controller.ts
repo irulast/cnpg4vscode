@@ -16,6 +16,7 @@ import { controllerLabel, executeCellSql, ExecuteResult } from "./controller-cor
 import { formatErrorOutput, formatSuccessOutput, OutputItem } from "./output.js";
 import { redact } from "../pg/redact.js";
 import { ActiveConnection } from "../state/session.js";
+import { recordExecution } from "../state/history.js";
 import { log } from "../logging/channel.js";
 
 export class CnpgNotebookController implements vscode.Disposable {
@@ -79,6 +80,21 @@ export class CnpgNotebookController implements vscode.Disposable {
       connection: this.conn.id,
       durationMs,
       kind: result.kind,
+    });
+    // Record to per-workspace history (T072 + T129). recordExecution() is
+    // a no-op when history is disabled or no workspace is open. The SQL
+    // is redacted inside recordExecution() — never persisted raw.
+    const rows = result.kind === "ok" ? (result.result.rowCount ?? null) : null;
+    const errorClass = result.kind === "error" ? result.sqlstate : undefined;
+    void recordExecution({
+      clusterId: `${this.conn.cluster.contextName}/${this.conn.cluster.namespace}/${this.conn.cluster.clusterName}`,
+      database: this.conn.database,
+      user: this.conn.user,
+      sql,
+      durationMs,
+      rows,
+      ok: success,
+      ...(errorClass ? { errorClass } : {}),
     });
     exec.end(success, Date.now());
   }

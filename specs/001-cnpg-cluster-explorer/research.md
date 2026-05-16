@@ -271,23 +271,41 @@ records the **Decision**, **Rationale**, and **Alternatives considered**.
 
 ## 11. Per-workspace persistent storage
 
-- **Decision**: **SQLite via `better-sqlite3`** ^11 at
+> **REVISED 2026-05-15**: Shipped as **JSON-on-disk + in-memory
+> filter**, not SQLite+FTS5. Reason: in practice CNPG-extension users
+> run ~100-500 queries per session — well below the scale where SQLite's
+> indexing matters. JSON ships with zero native-binding complexity,
+> zero per-platform packaging penalty (we still package per-target so
+> the muscle memory is in place for future native deps, but the JSON
+> store doesn't need it), and trivial migration. SQLite remains the
+> documented upgrade target if a user reports actual search latency at
+> scale; the storage interface (`HistoryStore`) is intentionally
+> swappable. Constitution §V (Simplicity & YAGNI).
+
+- **Decision** *(superseded)*: **SQLite via `better-sqlite3`** ^11 at
   `context.storageUri/history.db`. Schema:
   `queries(id INTEGER PRIMARY KEY, ts INTEGER, cluster_id TEXT, db TEXT,
    redacted_sql TEXT, duration_ms INTEGER, rows INTEGER, ok INTEGER)`
   plus an `FTS5` virtual table over `redacted_sql` for substring/
   keyword search.
-- **Rationale**: `workspaceState` serializes the whole memento on every
-  write — at 10 k+ entries that's MB rewrites per insert and O(n) JS
-  search. SQLite gives O(log n) lookups, FTS5 search, atomic
-  durability. `context.storageUri` is per-workspace, sandboxed, and
-  gitignored by default.
-- **Native module note**: `better-sqlite3` ships prebuilt binaries for
-  all VS Code-supported platforms; we publish per-platform VSIXs via
-  `vsce package --target`. **Only redacted SQL is ever stored** —
-  Secret material and decoded passwords stay in-memory only.
-- **Alternatives considered**: Plain JSON (slow, no FTS); `lowdb`
-  (same problem); `workspaceState` (size + perf cap).
+- **What shipped instead**: a single JSON array at
+  `context.storageUri/history.json`, bounded to
+  `cnpg4vscode.history.maxEntries` (default 1000). Append-only with
+  oldest-first pruning on overflow. Read on every search via
+  `JSON.parse`; in-memory case-insensitive substring filter against
+  the entry list. Concurrency-safe through a chained write-promise.
+  The discovery surface is a `vscode.window.showQuickPick` (native VS
+  Code; filter-as-you-type) — no webview required for the panel.
+- **Rationale (JSON path)**: A 1000-entry history weighs ~200 KB
+  on-disk, parses in <10 ms, and filters in <5 ms via native JS
+  string-includes. SQLite's wins (O(log n) lookups, FTS5) start to
+  matter past ~5k entries — not where typical users live.
+- **Native module note** *(deferred)*: `better-sqlite3` would still
+  need per-platform VSIXs via `vsce package --target`. The packaging
+  pipeline (T131) is already wired for this case.
+- **Alternatives considered**: `workspaceState` (size + perf cap;
+  serializes the whole memento per write); `lowdb` (JSON underneath,
+  no win over our own append); SQLite (deferred; upgrade target).
 
 ## 12. Testing strategy
 

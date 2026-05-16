@@ -194,3 +194,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `https://github.com/irulast/cnpg4vscode`. Resolves vsce's
   relative-link warning and makes README links work in the
   Marketplace listing.
+
+### Added (query history — T072 + T129)
+
+- **Per-workspace query history**. Every notebook cell execution is
+  recorded to `${context.storageUri}/history.json` (per-workspace,
+  bounded to `cnpg4vscode.history.maxEntries`, default 1000). SQL is
+  redacted before persistence; a defensive guard inside the store
+  rejects any entry whose text still matches a credential pattern.
+- **`CNPG: Open Query History`** command surfaces a native Quick Pick
+  (filter-as-you-type) over the 200 most-recent entries. Each row
+  shows status / row count / duration / cluster-db / relative time.
+  On pick, the SQL appends as a new cell to the active `cnpg-sql`
+  notebook (or opens in a sibling SQL document if none is active).
+- **`CNPG: Clear Query History`** command with confirmation modal.
+- **Storage choice** (research §11 revised banner): shipped as JSON +
+  in-memory filter, not SQLite + FTS5. JSON handles the typical CNPG
+  user's session size (~100–500 queries) with zero native-binding
+  complexity, zero per-platform packaging penalty, and trivial
+  migration. SQLite remains the documented upgrade target if a user
+  reports search latency at scale; the storage interface is
+  intentionally swappable.

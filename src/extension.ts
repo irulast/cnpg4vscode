@@ -24,6 +24,7 @@ import {
   disposeSession,
   getSession,
 } from "./state/session.js";
+import { initHistory } from "./state/history.js";
 import { CnpgNotebookSerializer, CNPG_NOTEBOOK_TYPE } from "./notebook/host-serializer.js";
 import { CnpgNotebookController } from "./notebook/controller.js";
 
@@ -68,6 +69,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   initStatusBar(context);
+  initHistory(context);
   registerCommands(context, { clustersProvider, schemaProvider });
 
   // Notebook serializer for cnpg-sql files (FR-035).
