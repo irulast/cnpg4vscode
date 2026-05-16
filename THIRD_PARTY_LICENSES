@@ -59,6 +59,31 @@ VS Code-bundled extension dependencies (extensionDependencies)
     Marketplace; VSIX/dev users see a one-time prompt on first ER open.
     Not bundled into our VSIX — VS Code resolves it independently.
 
+Bundled webview dependencies
+----------------------------
+These packages are bundled INTO `dist/webviews/grid/bundle.js` by esbuild
+at extension build time. They are listed as `devDependencies` in
+`package.json` because the extension never `require()`s them at runtime
+— esbuild inlines them — but the resulting bundle bytes ship inside the
+VSIX and execute in the Grid Editor webview's CSP-locked iframe, so they
+warrant attribution here. The `audit-deps.mjs` license-checker scans
+only `--production` deps; this section is the manual companion for
+bundled-but-devDependency packages.
+
+  - react@18.3.1 — MIT
+    https://reactjs.org/
+    Purpose: UI framework for the Grid Editor webview (T136 + T153).
+
+  - react-dom@18.3.1 — MIT
+    https://reactjs.org/
+    Purpose: React renderer for the browser DOM in the webview.
+
+  - @glideapps/glide-data-grid@6.0.3 — MIT
+    https://grid.glideapps.com
+    Purpose: Canvas-rendered data grid. Handles ≥100k rows at 60fps;
+    used by Hex and PostHog at production scale. See research §6 for
+    the library-selection decision and bundle-weight rationale.
+
 Bundled binaries / prebuilds
 ----------------------------
 None at this time. If a future change introduces a native module with
