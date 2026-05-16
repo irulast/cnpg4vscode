@@ -165,6 +165,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *(Initial revision incorrectly assumed Mermaid was built into VS
   Code; fixed same day after bug report.)*
 
+### Added (visual constraint editor)
+
+- **No-webview visual ADD CONSTRAINT wizard** (T111 scope variant).
+  Right-click a table in the Schema view → **CNPG: New Constraint...** →
+  pick kind (PRIMARY KEY / UNIQUE / FOREIGN KEY / CHECK). Kind-specific
+  flow follows: PK/UNIQUE collect local columns + auto-suggested name;
+  FK walks through local cols → referenced schema → referenced table →
+  arity-matched referenced cols → ON UPDATE / ON DELETE action picks;
+  CHECK takes a free-form predicate guarded against bare `;` (same
+  injection guard as the partial-index WHERE clause). Modal preview
+  shows the full ALTER TABLE statement before execution. Pure builder
+  + validator at `src/sql/constraint-builder.ts` (22-assertion unit
+  suite); host glue extends the existing `src/commands/editors.ts` that
+  already houses the index editor — same playbook, two more verbs.
+
 ### Added (visual index editor)
 
 - **No-webview visual CREATE INDEX wizard** (T110 scope variant). Right-click

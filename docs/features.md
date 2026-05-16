@@ -229,6 +229,39 @@ against the most-recently-active notebook's controller; if no
 notebook is open, it prompts you to pick a connection and creates
 one.
 
+## Visual constraint editor
+
+Add `PRIMARY KEY`, `UNIQUE`, `FOREIGN KEY`, or `CHECK` constraints to
+a table through a guided flow — no hand-written DDL:
+
+1. Ensure the connection is in **Write mode**.
+2. In the Schema view, right-click a **table** → **CNPG: New Constraint...**.
+3. Pick the constraint kind:
+   - **PRIMARY KEY** / **UNIQUE** — multi-select the local columns
+     (selection order preserved for composite constraints), then confirm
+     the auto-suggested name (`pk_<table>` / `uq_<table>_<cols>`).
+   - **FOREIGN KEY** — multi-select the local columns, then pick the
+     **referenced schema** → **referenced table** → multi-select the
+     **referenced columns** (must match the local-side arity exactly),
+     then pick **ON UPDATE** and **ON DELETE** actions (NO ACTION /
+     RESTRICT / CASCADE / SET NULL / SET DEFAULT). Default name is
+     `fk_<local>_<referenced>`.
+   - **CHECK** — type the predicate expression directly (e.g. `price > 0`).
+     The wizard rejects bare `;` as a SQL-injection guard. Default name
+     is `ck_<table>` or `ck_<table>_<cols>` when columns are supplied.
+4. Confirm or override the constraint name (≤63 chars, PostgreSQL's
+   NAMEDATALEN limit — the wizard auto-truncates suggestions to fit).
+5. The modal preview shows the full `ALTER TABLE … ADD CONSTRAINT …`
+   statement plus a per-spec breakdown (target, kind, columns, FK
+   references and actions, CHECK predicate).
+6. Click **Create** to execute. Success / failure surfaces as a
+   notification.
+
+Like the index editor, the whole flow uses native VS Code modals — no
+webview to theme. Action picks and column selectors are standard
+QuickPicks; the CHECK expression and constraint name come in via
+InputBox.
+
 ## Visual index editor
 
 Add an index to a table without hand-writing DDL:

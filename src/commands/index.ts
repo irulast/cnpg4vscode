@@ -538,17 +538,17 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     await openIndexEditor(node);
   });
 
-  // Placeholders for commands pending later user stories.
-  const futureCommands: ReadonlyArray<string> = [
-    "cnpg.editor.constraint.create",
-  ];
-  for (const id of futureCommands) {
-    reg(id, () => {
+  reg("cnpg.editor.constraint.create", async (arg: unknown) => {
+    const node = asSchemaNode(arg);
+    if (!node) {
       vscode.window.showInformationMessage(
-        `${id} is not implemented yet (planned for a later release).`,
+        "Right-click a table in the Schema view to add a constraint.",
       );
-    });
-  }
+      return;
+    }
+    const { openConstraintEditor } = await import("./editors.js");
+    await openConstraintEditor(node);
+  });
 
   // Keep the status bar in sync with the active notebook editor's
   // selected controller. The Schema view visibility is managed by the
