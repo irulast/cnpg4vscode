@@ -9,11 +9,25 @@
     "vscode": "^1.85.0",
     "node": ">=20.0.0"
   },
-  "categories": ["Notebooks", "Other"],
-  "keywords": ["postgres", "postgresql", "kubernetes", "cnpg", "cloudnative-pg", "k8s", "database", "sql"],
+  "categories": [
+    "Notebooks",
+    "Other"
+  ],
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "kubernetes",
+    "cnpg",
+    "cloudnative-pg",
+    "k8s",
+    "database",
+    "sql"
+  ],
   "qna": "marketplace",
   "preview": true,
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/irulast/cnpg4vscode.git"
@@ -31,32 +45,140 @@
   ],
   "contributes": {
     "commands": [
-      { "command": "cnpg.refresh", "title": "Refresh", "category": "CNPG", "icon": "$(refresh)" },
-      { "command": "cnpg.cluster.showDetails", "title": "Show Cluster Details", "category": "CNPG" },
-      { "command": "cnpg.cluster.connect", "title": "Connect", "category": "CNPG" },
-      { "command": "cnpg.cluster.disconnect", "title": "Disconnect", "category": "CNPG" },
-      { "command": "cnpg.connection.toggleWriteMode", "title": "Toggle Write Mode", "category": "CNPG", "enablement": "cnpg.activeConnection" },
-      { "command": "cnpg.notebook.new", "title": "New SQL Notebook", "category": "CNPG" },
-      { "command": "cnpg.notebook.saveToCluster", "title": "Save Notebook to Cluster", "category": "CNPG", "enablement": "notebookType == cnpg-sql" },
-      { "command": "cnpg.notebook.openSaved", "title": "Open Saved Notebook", "category": "CNPG", "enablement": "false" },
-      { "command": "cnpg.runFromSqlFile", "title": "Run Statement (from .sql file)", "category": "CNPG" },
-      { "command": "cnpg.tree.copyName", "title": "Copy Fully-Qualified Name", "category": "CNPG" },
-      { "command": "cnpg.tree.openDefinition", "title": "Open Definition", "category": "CNPG" },
-      { "command": "cnpg.tree.browseRows", "title": "Browse Rows", "category": "CNPG" },
-      { "command": "cnpg.tree.countRows", "title": "Count Rows", "category": "CNPG" },
-      { "command": "cnpg.tree.insertTemplate", "title": "Generate INSERT Template", "category": "CNPG" },
-      { "command": "cnpg.tree.drop", "title": "Drop...", "category": "CNPG" },
-      { "command": "cnpg.tree.truncate", "title": "Truncate...", "category": "CNPG" },
-      { "command": "cnpg.tree.reindex", "title": "REINDEX...", "category": "CNPG" },
-      { "command": "cnpg.tree.alterScaffold", "title": "Scaffold ALTER...", "category": "CNPG" },
-      { "command": "cnpg.editor.index.create", "title": "New Index...", "category": "CNPG" },
-      { "command": "cnpg.editor.constraint.create", "title": "New Constraint...", "category": "CNPG" },
-      { "command": "cnpg.migration.open", "title": "Open Migration Wizard", "category": "CNPG" },
-      { "command": "cnpg.migration.run", "title": "Run Migration (active SQL editor)", "category": "CNPG" },
-      { "command": "cnpg.er.open", "title": "Show ER Diagram", "category": "CNPG" },
-      { "command": "cnpg.history.open", "title": "Open Query History", "category": "CNPG" },
-      { "command": "cnpg.history.clear", "title": "Clear Query History", "category": "CNPG" },
-      { "command": "cnpg.reportProblem", "title": "Report a Problem", "category": "CNPG" }
+      {
+        "command": "cnpg.refresh",
+        "title": "Refresh",
+        "category": "CNPG",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "cnpg.cluster.showDetails",
+        "title": "Show Cluster Details",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.cluster.connect",
+        "title": "Connect",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.cluster.disconnect",
+        "title": "Disconnect",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.connection.toggleWriteMode",
+        "title": "Toggle Write Mode",
+        "category": "CNPG",
+        "enablement": "cnpg.activeConnection"
+      },
+      {
+        "command": "cnpg.notebook.new",
+        "title": "New SQL Notebook",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.notebook.saveToCluster",
+        "title": "Save Notebook to Cluster",
+        "category": "CNPG",
+        "enablement": "notebookType == cnpg-sql"
+      },
+      {
+        "command": "cnpg.notebook.openSaved",
+        "title": "Open Saved Notebook",
+        "category": "CNPG",
+        "enablement": "false"
+      },
+      {
+        "command": "cnpg.runFromSqlFile",
+        "title": "Run Statement (from .sql file)",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.copyName",
+        "title": "Copy Fully-Qualified Name",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.openDefinition",
+        "title": "Open Definition",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.browseRows",
+        "title": "Browse Rows",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.countRows",
+        "title": "Count Rows",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.insertTemplate",
+        "title": "Generate INSERT Template",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.drop",
+        "title": "Drop...",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.truncate",
+        "title": "Truncate...",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.reindex",
+        "title": "REINDEX...",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.tree.alterScaffold",
+        "title": "Scaffold ALTER...",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.editor.index.create",
+        "title": "New Index...",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.editor.constraint.create",
+        "title": "New Constraint...",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.migration.open",
+        "title": "Open Migration Wizard",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.migration.run",
+        "title": "Run Migration (active SQL editor)",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.er.open",
+        "title": "Show ER Diagram",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.history.open",
+        "title": "Open Query History",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.history.clear",
+        "title": "Clear Query History",
+        "category": "CNPG"
+      },
+      {
+        "command": "cnpg.reportProblem",
+        "title": "Report a Problem",
+        "category": "CNPG"
+      }
     ],
     "viewsContainers": {
       "activitybar": [
@@ -69,15 +191,26 @@
     },
     "views": {
       "cnpg": [
-        { "id": "cnpg.clusters", "name": "Clusters" },
-        { "id": "cnpg.schema", "name": "Schema", "when": "cnpg.activeConnection" }
+        {
+          "id": "cnpg.clusters",
+          "name": "Clusters"
+        },
+        {
+          "id": "cnpg.schema",
+          "name": "Schema",
+          "when": "cnpg.activeConnection"
+        }
       ]
     },
     "notebooks": [
       {
         "type": "cnpg-sql",
         "displayName": "CNPG SQL Notebook",
-        "selector": [{ "filenamePattern": "*.cnpg-sql" }]
+        "selector": [
+          {
+            "filenamePattern": "*.cnpg-sql"
+          }
+        ]
       }
     ],
     "notebookRenderer": [
@@ -85,14 +218,21 @@
         "id": "cnpg-result-renderer",
         "displayName": "CNPG Result Grid",
         "entrypoint": "./dist/notebook-renderer.js",
-        "mimeTypes": ["application/x-cnpg-result+json"]
+        "mimeTypes": [
+          "application/x-cnpg-result+json"
+        ]
       }
     ],
     "languages": [
       {
         "id": "postgres",
-        "aliases": ["PostgreSQL", "postgres"],
-        "extensions": [".pgsql"],
+        "aliases": [
+          "PostgreSQL",
+          "postgres"
+        ],
+        "extensions": [
+          ".pgsql"
+        ],
         "configuration": "./languages/postgres-language-configuration.json"
       }
     ],
@@ -115,27 +255,95 @@
     ],
     "menus": {
       "view/title": [
-        { "command": "cnpg.refresh", "when": "view == cnpg.clusters", "group": "navigation" }
+        {
+          "command": "cnpg.refresh",
+          "when": "view == cnpg.clusters",
+          "group": "navigation"
+        }
       ],
       "view/item/context": [
-        { "command": "cnpg.cluster.showDetails", "when": "view == cnpg.clusters && viewItem == cluster", "group": "cnpg@1" },
-        { "command": "cnpg.cluster.connect", "when": "view == cnpg.clusters && viewItem == cluster && !cnpg.cluster.connected", "group": "cnpg@2" },
-        { "command": "cnpg.cluster.disconnect", "when": "view == cnpg.clusters && viewItem == cluster && cnpg.cluster.connected", "group": "cnpg@2" },
-        { "command": "cnpg.tree.copyName", "when": "view == cnpg.schema", "group": "cnpg@1" },
-        { "command": "cnpg.er.open", "when": "view == cnpg.schema && viewItem =~ /^(connection|schema)$/", "group": "cnpg@1" },
-        { "command": "cnpg.tree.openDefinition", "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView|function|procedure|trigger|index|constraint)$/", "group": "cnpg@2" },
-        { "command": "cnpg.tree.browseRows", "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView)$/", "group": "cnpg@2" },
-        { "command": "cnpg.tree.countRows", "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView)$/", "group": "cnpg@2" },
-        { "command": "cnpg.tree.insertTemplate", "when": "view == cnpg.schema && viewItem == table", "group": "cnpg@2" },
-        { "command": "cnpg.editor.index.create", "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode", "group": "cnpg.write@1" },
-        { "command": "cnpg.editor.constraint.create", "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode", "group": "cnpg.write@1" },
-        { "command": "cnpg.tree.drop", "when": "view == cnpg.schema && cnpg.connection.writeMode", "group": "cnpg.destructive@1" },
-        { "command": "cnpg.tree.truncate", "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode", "group": "cnpg.destructive@2" },
-        { "command": "cnpg.tree.reindex", "when": "view == cnpg.schema && viewItem =~ /^(table|index)$/ && cnpg.connection.writeMode", "group": "cnpg.destructive@3" },
-        { "command": "cnpg.tree.alterScaffold", "when": "view == cnpg.schema && cnpg.connection.writeMode", "group": "cnpg.destructive@4" }
+        {
+          "command": "cnpg.cluster.showDetails",
+          "when": "view == cnpg.clusters && viewItem == cluster",
+          "group": "cnpg@1"
+        },
+        {
+          "command": "cnpg.cluster.connect",
+          "when": "view == cnpg.clusters && viewItem == cluster && !cnpg.cluster.connected",
+          "group": "cnpg@2"
+        },
+        {
+          "command": "cnpg.cluster.disconnect",
+          "when": "view == cnpg.clusters && viewItem == cluster && cnpg.cluster.connected",
+          "group": "cnpg@2"
+        },
+        {
+          "command": "cnpg.tree.copyName",
+          "when": "view == cnpg.schema",
+          "group": "cnpg@1"
+        },
+        {
+          "command": "cnpg.er.open",
+          "when": "view == cnpg.schema && viewItem =~ /^(connection|schema)$/",
+          "group": "cnpg@1"
+        },
+        {
+          "command": "cnpg.tree.openDefinition",
+          "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView|function|procedure|trigger|index|constraint)$/",
+          "group": "cnpg@2"
+        },
+        {
+          "command": "cnpg.tree.browseRows",
+          "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView)$/",
+          "group": "cnpg@2"
+        },
+        {
+          "command": "cnpg.tree.countRows",
+          "when": "view == cnpg.schema && viewItem =~ /^(table|view|materializedView)$/",
+          "group": "cnpg@2"
+        },
+        {
+          "command": "cnpg.tree.insertTemplate",
+          "when": "view == cnpg.schema && viewItem == table",
+          "group": "cnpg@2"
+        },
+        {
+          "command": "cnpg.editor.index.create",
+          "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode",
+          "group": "cnpg.write@1"
+        },
+        {
+          "command": "cnpg.editor.constraint.create",
+          "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode",
+          "group": "cnpg.write@1"
+        },
+        {
+          "command": "cnpg.tree.drop",
+          "when": "view == cnpg.schema && cnpg.connection.writeMode",
+          "group": "cnpg.destructive@1"
+        },
+        {
+          "command": "cnpg.tree.truncate",
+          "when": "view == cnpg.schema && viewItem == table && cnpg.connection.writeMode",
+          "group": "cnpg.destructive@2"
+        },
+        {
+          "command": "cnpg.tree.reindex",
+          "when": "view == cnpg.schema && viewItem =~ /^(table|index)$/ && cnpg.connection.writeMode",
+          "group": "cnpg.destructive@3"
+        },
+        {
+          "command": "cnpg.tree.alterScaffold",
+          "when": "view == cnpg.schema && cnpg.connection.writeMode",
+          "group": "cnpg.destructive@4"
+        }
       ],
       "editor/context": [
-        { "command": "cnpg.runFromSqlFile", "when": "(editorLangId == sql || editorLangId == postgres) && cnpg.activeConnection && !inNotebookEditor", "group": "cnpg@1" }
+        {
+          "command": "cnpg.runFromSqlFile",
+          "when": "(editorLangId == sql || editorLangId == postgres) && cnpg.activeConnection && !inNotebookEditor",
+          "group": "cnpg@1"
+        }
       ]
     },
     "configuration": {
@@ -143,7 +351,14 @@
       "properties": {
         "cnpg4vscode.log.level": {
           "type": "string",
-          "enum": ["off", "error", "warn", "info", "debug", "trace"],
+          "enum": [
+            "off",
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
           "default": "info",
           "scope": "application",
           "description": "Verbosity of the cnpg4vscode log output channel."
@@ -156,7 +371,9 @@
         },
         "cnpg4vscode.tunnel.bindAddress": {
           "type": "string",
-          "enum": ["127.0.0.1"],
+          "enum": [
+            "127.0.0.1"
+          ],
           "default": "127.0.0.1",
           "description": "Local interface for port-forwards. Only loopback is permitted."
         },
@@ -176,7 +393,10 @@
         },
         "cnpg4vscode.connection.defaultMode": {
           "type": "string",
-          "enum": ["readonly", "write"],
+          "enum": [
+            "readonly",
+            "write"
+          ],
           "default": "readonly",
           "description": "Reserved. Per FR-020 every connection opens read-only; setting this to 'write' is rejected at runtime and forced back to 'readonly'."
         },
@@ -225,7 +445,9 @@
         },
         "cnpg4vscode.redaction.extraPatterns": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Additional regex patterns appended to the credential-literal ruleset."
         },
@@ -243,7 +465,11 @@
         },
         "cnpg4vscode.er.layout": {
           "type": "string",
-          "enum": ["layered", "force", "stress"],
+          "enum": [
+            "layered",
+            "force",
+            "stress"
+          ],
           "default": "layered",
           "description": "ELK layout algorithm for ER diagrams."
         },
@@ -270,9 +496,12 @@
     "vscode:prepublish": "pnpm build"
   },
   "devDependencies": {
+    "@glideapps/glide-data-grid": "^6.0.3",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.11.0",
     "@types/pg": "^8.11.0",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
     "@types/vscode": "^1.85.0",
     "@types/vscode-notebook-renderer": "^1.72.3",
     "@typescript-eslint/eslint-plugin": "^7.7.0",
@@ -285,6 +514,8 @@
     "eslint": "^8.57.0",
     "eslint-plugin-cnpg-local": "file:./eslint-plugins/eslint-plugin-cnpg-local",
     "license-checker": "^25.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.4.0",
     "vitest": "^1.5.0"
   },
