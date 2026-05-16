@@ -5,9 +5,18 @@
  * without pulling in the `vscode` runtime module.
  */
 
-import { CnpgCluster } from "../k8s/cnpg.js";
+import { CnpgCluster, PodSummary } from "../k8s/cnpg.js";
 
-export function renderDetailMarkdown(contextName: string, c: CnpgCluster): string {
+export interface RenderDetailOptions {
+  pods?: PodSummary[];
+  podsError?: string;
+}
+
+export function renderDetailMarkdown(
+  contextName: string,
+  c: CnpgCluster,
+  opts: RenderDetailOptions = {},
+): string {
   // Each identifier appears in inline code so the user can double-click to
   // copy it without selecting punctuation; mirrors FR-010 for the detail surface.
   const lines = [
@@ -35,6 +44,23 @@ export function renderDetailMarkdown(contextName: string, c: CnpgCluster): strin
       `- **message**: ${c.lastCondition.message}`,
       `- **at**: ${c.lastCondition.lastTransitionTime}`,
     );
+  }
+  if (opts.pods && opts.pods.length > 0) {
+    lines.push("", "## Pods", "");
+    lines.push("| Role | Name | Phase | Ready | Restarts | Age |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const p of opts.pods) {
+      const role = p.role === "primary" ? "🟢 primary" : "replica";
+      const nameCell = p.terminating ? `${p.name} _(terminating)_` : p.name;
+      const ready = p.ready ? `${p.containersReady} ✓` : p.containersReady;
+      lines.push(
+        `| ${role} | \`${nameCell}\` | ${p.phase} | ${ready} | ${p.restartCount} | ${p.age} |`,
+      );
+    }
+  } else if (opts.pods && opts.pods.length === 0) {
+    lines.push("", "## Pods", "", "_No pods found for this cluster._");
+  } else if (opts.podsError) {
+    lines.push("", "## Pods", "", `_Could not list pods: ${opts.podsError}_`);
   }
   lines.push(
     "",

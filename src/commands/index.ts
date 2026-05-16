@@ -105,7 +105,10 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
       context: parsed.contextName,
       cluster: `${parsed.cluster.namespace}/${parsed.cluster.name}`,
     });
-    await showClusterDetail(parsed.contextName, parsed.cluster);
+    const kc = deps.clustersProvider.getKubeConfig();
+    await showClusterDetail(parsed.contextName, parsed.cluster, {
+      ...(kc ? { kubeConfig: kc } : {}),
+    });
   });
 
   reg("cnpg.cluster.connect", async (arg: unknown) => {

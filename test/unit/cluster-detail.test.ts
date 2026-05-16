@@ -95,4 +95,74 @@ describe("renderDetailMarkdown()", () => {
     const out = renderDetailMarkdown("kind-dev", sample);
     expect(out).toContain("read-only");
   });
+
+  it("renders a Pods table when pod summaries are supplied", () => {
+    const out = renderDetailMarkdown("kind-dev", sample, {
+      pods: [
+        {
+          name: "app-db-1",
+          phase: "Running",
+          role: "primary",
+          ready: true,
+          containersReady: "1/1",
+          restartCount: 0,
+          age: "1h",
+          terminating: false,
+        },
+        {
+          name: "app-db-2",
+          phase: "Running",
+          role: "replica",
+          ready: false,
+          containersReady: "0/1",
+          restartCount: 3,
+          age: "1h",
+          terminating: false,
+        },
+      ],
+    });
+    expect(out).toContain("## Pods");
+    expect(out).toContain("| Role | Name | Phase | Ready | Restarts | Age |");
+    expect(out).toContain("`app-db-1`");
+    expect(out).toContain("primary");
+    expect(out).toContain("3"); // restart count for the replica
+  });
+
+  it("marks terminating pods in the Pods table", () => {
+    const out = renderDetailMarkdown("kind-dev", sample, {
+      pods: [
+        {
+          name: "app-db-3",
+          phase: "Running",
+          role: "replica",
+          ready: true,
+          containersReady: "1/1",
+          restartCount: 0,
+          age: "5m",
+          terminating: true,
+        },
+      ],
+    });
+    expect(out).toContain("_(terminating)_");
+  });
+
+  it("surfaces a pod-listing error in place of the table", () => {
+    const out = renderDetailMarkdown("kind-dev", sample, {
+      podsError: "forbidden: cannot list pods in namespace \"default\"",
+    });
+    expect(out).toContain("## Pods");
+    expect(out).toContain("Could not list pods:");
+    expect(out).toContain("forbidden");
+  });
+
+  it("renders a friendly empty-state when pods is an empty array", () => {
+    const out = renderDetailMarkdown("kind-dev", sample, { pods: [] });
+    expect(out).toContain("## Pods");
+    expect(out).toContain("No pods found");
+  });
+
+  it("omits the Pods section entirely when no pods option is supplied", () => {
+    const out = renderDetailMarkdown("kind-dev", sample);
+    expect(out).not.toContain("## Pods");
+  });
 });
