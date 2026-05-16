@@ -112,6 +112,84 @@ export function buildUpdate(opts: BuildUpdateOptions): BuiltStatement {
   return { text, values };
 }
 
+export interface BuildInsertOptions {
+  readonly schema: string;
+  readonly table: string;
+  /** Column values to insert. Empty record emits `DEFAULT VALUES`. */
+  readonly values: Readonly<Record<string, ColumnChange>>;
+  /**
+   * Optional RETURNING clause — array of column names, or the literal
+   * `"*"` for `RETURNING *`. Omitted clause produces no RETURNING.
+   */
+  readonly returning?: ReadonlyArray<string> | "*";
+}
+
+/**
+ * Build a parameterized INSERT statement. Used by the Grid Editor's
+ * "Add Row" action (T155) and any other code path that needs to insert
+ * a single row with the same `ColumnChange` shape the UPDATE builder
+ * already understands.
+ *
+ * Columns the caller didn't specify are NOT mentioned in the column
+ * list, so the database applies its declared DEFAULT (or NULL when no
+ * default). To EXPLICITLY restore a column to its default, pass
+ * `{ sql: "DEFAULT" }` as the value — same sentinel as buildUpdate().
+ *
+ * When `values` is empty (`{}`), emits `INSERT INTO t DEFAULT VALUES` —
+ * PG's terse form for "insert a row using every column's default."
+ */
+export function buildInsert(opts: BuildInsertOptions): BuiltStatement {
+  const target = qualifyIdent(opts.schema, opts.table);
+  const cols = Object.keys(opts.values).sort();
+  const returning = renderReturning(opts.returning);
+
+  if (cols.length === 0) {
+    const head = `INSERT INTO ${target} DEFAULT VALUES`;
+    return { text: returning ? `${head} ${returning}` : head, values: [] };
+  }
+
+  const values: unknown[] = [];
+  let nextParam = 1;
+  const placeholders: string[] = [];
+  const colList = cols.map((c) => quoteIdent(c)).join(", ");
+
+  for (const col of cols) {
+    const change = opts.values[col]!;
+    if (change === null) {
+      placeholders.push("NULL");
+      continue;
+    }
+    if (
+      typeof change === "object" &&
+      change !== null &&
+      "sql" in change &&
+      change.sql === "DEFAULT"
+    ) {
+      placeholders.push("DEFAULT");
+      continue;
+    }
+    if (typeof change === "object" && change !== null && "typeHint" in change) {
+      values.push(change.value);
+      placeholders.push(`$${nextParam}::${change.typeHint}`);
+      nextParam++;
+      continue;
+    }
+    values.push(change);
+    placeholders.push(`$${nextParam}`);
+    nextParam++;
+  }
+
+  const head = `INSERT INTO ${target} (${colList}) VALUES (${placeholders.join(", ")})`;
+  return { text: returning ? `${head} ${returning}` : head, values };
+}
+
+function renderReturning(r: BuildInsertOptions["returning"]): string | null {
+  if (!r) return null;
+  if (r === "*") return "RETURNING *";
+  if (r.length === 0) return null;
+  return `RETURNING ${r.map((c) => quoteIdent(c)).join(", ")}`;
+}
+
 export interface BuildDeleteOptions extends BuildOptions {}
 
 /**
