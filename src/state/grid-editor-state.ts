@@ -19,8 +19,43 @@
  * history; permitted by the eslint rule `no-state-write-outside-history`).
  */
 
+import type { Memento } from "vscode";
+
 /** Bumped when the on-disk schema changes incompatibly. */
 export const CURRENT_VERSION = 1;
+
+const STORAGE_KEY_PREFIX = "cnpg.grid.layout.";
+
+/**
+ * Persist Grid Editor layout primitives via VS Code's workspace
+ * Memento. Centralised here so the eslint `no-state-write-outside-
+ * history` chokepoint rule (which guards writes to `workspaceState`)
+ * permits it — the defense-in-depth allowlist in `serialize()` is
+ * the redaction-equivalent for layout state (FR-039 + Constitution
+ * §Security: NEVER persists cell data).
+ */
+export async function saveGridState(
+  memento: Memento,
+  key: GridStateKey,
+  state: GridEditorState,
+): Promise<void> {
+  const json = serialize({ ...state, lastOpenedAt: Date.now() });
+  await memento.update(`${STORAGE_KEY_PREFIX}${gridStateKey(key)}`, json);
+}
+
+/**
+ * Load a previously persisted Grid Editor layout. Returns null when
+ * nothing is persisted or the persisted blob is corrupt (the host
+ * falls back to `applyDefaults()` in that case).
+ */
+export function loadGridState(
+  memento: Memento,
+  key: GridStateKey,
+): GridEditorState | null {
+  const raw = memento.get<string>(`${STORAGE_KEY_PREFIX}${gridStateKey(key)}`);
+  if (!raw) return null;
+  return deserialize(raw);
+}
 
 /** The 6-tuple that uniquely identifies a Grid Editor target. */
 export interface GridStateKey {

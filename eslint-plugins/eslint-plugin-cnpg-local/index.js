@@ -12,6 +12,7 @@ const path = require("node:path");
 const PERMITTED_FILES = new Set([
   path.normalize("src/state/history.ts"),
   path.normalize("src/state/tabs.ts"),
+  path.normalize("src/state/grid-editor-state.ts"),
 ]);
 
 const BLOCKED_MEMBER_CHAINS = [
