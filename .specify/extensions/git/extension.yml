@@ -13,7 +13,7 @@ requires:
   speckit_version: ">=0.2.0"
   tools:
     - name: git
-      required: false
+      required: true
 
 provides:
   commands:
@@ -37,7 +37,7 @@ provides:
     - name: "git-config.yml"
       template: "config-template.yml"
       description: "Git branching configuration"
-      required: false
+      required: true
 
 hooks:
   before_constitution:
