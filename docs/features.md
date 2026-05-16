@@ -229,6 +229,35 @@ against the most-recently-active notebook's controller; if no
 notebook is open, it prompts you to pick a connection and creates
 one.
 
+## Visual index editor
+
+Add an index to a table without hand-writing DDL:
+
+1. Make sure the target connection is in **Write mode** (status bar →
+   connection actions → Switch to Write mode).
+2. In the Schema view, right-click a **table** → **CNPG: New Index...**.
+3. Multi-select the columns to include — **selection order is preserved**
+   because index column order is load-bearing for the query planner.
+4. Pick **UNIQUE** (enforces uniqueness; index name defaults to `ux_…`)
+   or non-unique (`ix_…`).
+5. Pick **CONCURRENTLY**: yes for non-blocking builds on production
+   tables (non-transactional — leaves partial index on failure), no for
+   simpler atomic behavior.
+6. Optional **WHERE clause** for a partial index (e.g. `deleted_at IS
+   NULL`). Leave blank for a full index. The wizard rejects clauses
+   containing a `;` as a SQL-injection guard.
+7. Confirm or override the **index name**. The default follows the
+   `ix_<table>_<col1>_<col2>…` convention, truncated to PostgreSQL's
+   63-character identifier limit.
+8. A modal preview shows the full `CREATE [UNIQUE] INDEX [CONCURRENTLY]
+   …` statement plus a per-spec breakdown.
+9. Click **Create** to execute. The connection's pool runs the
+   statement; success / failure surfaces as a notification.
+
+The whole flow is native VS Code modals (no webview) — multi-select
+QuickPick + InputBox + warning modal — so theming, accessibility, and
+keyboard navigation come for free.
+
 ## Migration wizard
 
 Author and run a multi-statement migration with transactional safety:
