@@ -526,9 +526,20 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     await runMigrationFromEditor(editor, target);
   });
 
+  reg("cnpg.editor.index.create", async (arg: unknown) => {
+    const node = asSchemaNode(arg);
+    if (!node) {
+      vscode.window.showInformationMessage(
+        "Right-click a table in the Schema view to add an index.",
+      );
+      return;
+    }
+    const { openIndexEditor } = await import("./editors.js");
+    await openIndexEditor(node);
+  });
+
   // Placeholders for commands pending later user stories.
   const futureCommands: ReadonlyArray<string> = [
-    "cnpg.editor.index.create",
     "cnpg.editor.constraint.create",
   ];
   for (const id of futureCommands) {

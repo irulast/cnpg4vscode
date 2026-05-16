@@ -165,6 +165,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *(Initial revision incorrectly assumed Mermaid was built into VS
   Code; fixed same day after bug report.)*
 
+### Added (visual index editor)
+
+- **No-webview visual CREATE INDEX wizard** (T110 scope variant). Right-click
+  a table in the Schema view → **CNPG: New Index...** → multi-step flow that
+  collects: column selection (multi-select, order preserved — order matters
+  for query planning), UNIQUE y/n, CONCURRENTLY y/n, optional WHERE clause
+  (partial index — rejects bare `;` as a SQL-injection guard), index name
+  (auto-suggested `ix_<table>_<col>...` or `ux_<...>` for unique, truncated
+  to PG's 63-char NAMEDATALEN). Modal preview shows the full DDL + a per-
+  spec breakdown before execution. *(Same divergence rationale as the
+  migration wizard — a webview would re-introduce the host↔renderer message
+  protocol that FR-035 retired.)* Pure builder + validator at
+  `src/sql/index-builder.ts`, host glue at `src/commands/editors.ts`; pure
+  parts have an 18-assertion unit suite at `test/unit/index-builder.test.ts`.
+
 ### Added (migration wizard)
 
 - **No-webview migration wizard** (T112 scope variant; FR-027). Two new
