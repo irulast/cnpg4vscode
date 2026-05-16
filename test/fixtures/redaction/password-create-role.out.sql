@@ -1,0 +1,2 @@
+CREATE ROLE alice WITH PASSWORD '***REDACTED***' LOGIN;
+ALTER USER bob password '***REDACTED***';

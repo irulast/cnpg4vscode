@@ -1,0 +1,19 @@
+Third-Party Software Notices and Attribution
+============================================
+
+This file aggregates license notices for third-party software bundled with the
+cnpg4vscode VS Code extension. It is populated as runtime dependencies are
+added. The `scripts/audit-deps.mjs` script enforces a license allowlist on
+every CI run.
+
+The current runtime dependencies are:
+
+  - @kubernetes/client-node — Apache-2.0
+    https://github.com/kubernetes-client/javascript
+
+Development-only dependencies are listed in package.json and excluded from
+this file because they are not shipped in the published VSIX.
+
+For the complete set of bundled binaries (including those produced by
+prebuilt native modules such as better-sqlite3 once added), see the
+generated `dist/THIRD_PARTY_NOTICES.txt` file produced during `pnpm package`.

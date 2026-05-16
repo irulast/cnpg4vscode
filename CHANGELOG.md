@@ -1,0 +1,196 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- Initial project scaffolding (TypeScript + esbuild + vsce, VS Code engine
+  `^1.85.0`).
+- Lint guardrail forbidding writes to VS Code persistent state outside
+  `src/state/history.ts` and `src/state/tabs.ts` (per Constitution §Security).
+- LogOutputChannel-backed logging with credential redaction at the chokepoint
+  (per Constitution §IV).
+- Foundational test scaffolding (Vitest unit + contract, `@vscode/test-electron` e2e).
+- US1: kubeconfig discovery, CNPG operator detection, CNPG Cluster listing,
+  Clusters tree view with status indicators.
+- US2: read-only cluster detail surface rendered as a markdown preview, with
+  copy-friendly inline-code identifiers for each field.
+- US3: visibility- and focus-aware refresh timer that pauses when the view
+  is hidden or the window loses focus, with live setting reload.
+- US4 core: cluster Connect / Disconnect flow with port-forward tunnel FSM,
+  CA-pinned TLS to the in-cluster service, credential picker that defaults
+  to the `<cluster>-app` Secret, in-process pg connection pool, two-layer
+  read-only gate (client-side keyword allowlist + `SET LOCAL
+  transaction_read_only` server-side), per-connection Write-mode toggle
+  with status-bar indicator, untitled SQL console binding, Ctrl/Cmd+Enter
+  run-query command (results render in a sibling preview document until
+  the result-grid webview lands in US6).
+- US5: lazy-loaded Schema tree (Connection → Schema → Tables / Views /
+  Indexes / Sequences / Functions / Triggers / Types …) with a 60-second
+  TTL cache and reactive refresh on connect/disconnect. Per-node action
+  commands: Copy fully-qualified name, Open Definition (DDL via
+  `pg_get_*def` helpers and `pg_attribute` reconstruction), Browse Top
+  100, Count Rows, Generate INSERT template. Write-mode actions: DROP,
+  TRUNCATE, REINDEX, Scaffold ALTER — each gated by a typed-name
+  confirmation modal that cannot be bypassed silently.
+
+### Changed
+
+- Default click on a cluster row now invokes Connect (was Show Details).
+  Connect is idempotent: if a connection already exists for the cluster,
+  a new console bound to it opens immediately. Show Details is reachable
+  via the context menu. Spec `FR-019` records the rule.
+- The Schema view no longer disappears when the user switches focus to a
+  non-SQL document. `cnpg.activeConnection` now reflects session state
+  (whether any connection exists), not editor binding. Spec `FR-022`
+  amended to require this. The status bar still tracks the active
+  editor's bound connection, showing `(unbound editor)` when no binding
+  exists but other connections do.
+- Status-bar click now opens an action menu (Toggle Mode / Bind / Switch /
+  Disconnect) via the new `cnpg.connection.actions` command instead of
+  jumping straight to Bind Connection.
+- **Architectural change**: the interactive SQL surface is now a VS Code
+  Notebook (`cnpg-sql` notebook type) instead of an untitled `.sql`
+  document with per-tab connection binding. One `NotebookController` is
+  registered per active database connection; cells execute via
+  Shift+Enter (native), and results render inline beneath each cell.
+  Schema-tree actions (Browse Rows, Count Rows, INSERT template,
+  DROP / TRUNCATE / REINDEX, ALTER scaffold) now append a cell to the
+  active notebook instead of opening a preview document. A new
+  `cnpg.runFromSqlFile` command supports running statements from
+  workspace `.sql` files; it routes through the most-recently-active
+  notebook's controller. New requirements `FR-035` (notebook
+  architecture) and `FR-036` (run-from-`.sql`-file) record the rule;
+  see `spec.md` § Clarifications for the decision and rationale.
+- Removed commands: `cnpg.console.open`, `cnpg.console.bindConnection`,
+  `cnpg.runQuery`, `cnpg.runQueryAll` (superseded by native notebook
+  cell execution + `cnpg.runFromSqlFile`).
+- Removed keybinding: custom Ctrl+Enter `cnpg.runQuery`. Notebook cells
+  use the native Shift+Enter execute keybinding.
+- Contribute our own `postgres` language id (aliases `["PostgreSQL",
+  "postgres"]`, file extension `.pgsql`) with a TextMate grammar that
+  delegates to `source.sql` and adds PostgreSQL-specific keywords,
+  types, and dollar-quoted-string handling. Notebook cells default to
+  `postgres` so the cell-language picker reads "PostgreSQL" instead of
+  "MS SQL" (the label VS Code applies to its built-in `sql` language
+  whenever any Microsoft SQL extension is installed). Spec `FR-035`
+  amended.
+
+### Removed
+
+- The "Saved Scripts" sidebar pane (`cnpg.savedScripts` view), the
+  `cnpg.scripts.saveAs` command, and the `cnpg4vscode.scripts.location`
+  setting. These were designed for the editor-binding console era and
+  added no value under the notebook architecture — saving a session is
+  now the standard `Ctrl+S` gesture on a `cnpg-sql` notebook, and saved
+  files appear in VS Code's regular file explorer. Spec `FR-032`
+  amended to describe the notebook-save semantics. Constitution §V
+  (Simplicity & YAGNI).
+
+### Added (per-cluster notebook organization)
+
+- New command `cnpg.notebook.saveToCluster` (`CNPG: Save Notebook to
+  Cluster`) — prompts for a name and writes the active `cnpg-sql`
+  notebook to `${workspaceRoot}/.cnpg/notebooks/<context>/<namespace>/<cluster>/<name>.cnpg-sql`.
+  Also available from the status-bar action menu when a CNPG notebook
+  is the active editor.
+- The Clusters tree now expands cluster rows when at least one saved
+  notebook exists in the convention folder. Each notebook appears as a
+  leaf that opens on click; the cluster description shows the count.
+- The tree updates automatically when notebooks are added, removed, or
+  renamed in the workspace (FileSystemWatcher; no polling).
+- New setting `cnpg4vscode.notebooks.location` (default
+  `.cnpg/notebooks`) — the workspace-relative root of the convention
+  path. Resolved against the first workspace folder; refuses absolute
+  paths and `..` traversal.
+- New requirement `FR-037` records the convention; `FR-032` references
+  it. Convention not requirement: notebooks saved outside the folder
+  still open, they just don't appear under the cluster.
+
+### Added (polish)
+
+- **Snippets**: 16 PostgreSQL-flavored snippets bundled at
+  `snippets/postgres.code-snippets`, contributed for both `postgres` and
+  `sql` languages. Triggers: `sel`, `selw`, `cnt`, `ins`, `upd`, `del`,
+  `ctbl`, `cidx`, `cuidx`, `addcol`, `expl`, `fn`, `lst`, `slow`,
+  `idxstat`, `size`. Available in notebook cells and workspace
+  `.sql` / `.pgsql` files (T074).
+- **`CNPG: Report a Problem` command** (T128) — opens a Markdown
+  document with the most recent 200 log lines (already redacted) plus
+  environment info (VS Code / extension / platform / Node versions,
+  active connection + tunnel counts). Ready to paste into a support
+  thread or GitHub issue. The log buffer is bounded and lives entirely
+  in-memory; every captured line has already passed through
+  `redact()`.
+- **Marketplace metadata** (T132) — added the `Notebooks` category,
+  broader keywords, `preview: true`, `qna: "marketplace"`, and
+  `extensionKind: ["workspace"]` (the extension must run in the
+  workspace host because of its kubeconfig and `pg`-driver
+  dependencies).
+- **Result-grid notebook renderer** (T104). Cells with query results
+  now render in an interactive HTML table instead of a plain-text
+  preview. Sticky header, row numbers, theme-aware via `--vscode-*`
+  variables, distinct cell styling for NULL / boolean / number / Date /
+  object types, sortable scrollable body, footer with row count and
+  truncation notice. Implemented as a VS Code
+  `NotebookRendererProvider` consuming a new mime type
+  `application/x-cnpg-result+json` emitted by the cell output. Falls
+  back to the existing `text/plain` and `text/markdown` items if the
+  renderer is disabled. The ~4.5 KB renderer bundle is built as a
+  second esbuild target (`dist/notebook-renderer.js`). Pure HTML
+  builder is unit-tested (10 assertions).
+- **ER diagram** (T115/T118 — original T116/T117 superseded). Right-click
+  a database or schema in the Schema view → **CNPG: Show ER Diagram** →
+  opens a markdown document with a Mermaid `erDiagram` block rendered
+  inline. Per-schema and whole-database scopes. **No webview** in v1:
+  research §7 revised banner explains the trade-off (Mermaid handles
+  the typical CNPG app-DB scale with zero bundle weight from us;
+  ELK+D3+webview remains the documented upgrade target if a user hits
+  the ~50-table limit). Surfaces a friendly preamble when the table
+  count exceeds `cnpg4vscode.er.warnOverTables`. Pure builder is
+  unit-tested (11 assertions).
+- **`bierner.markdown-mermaid` added as an `extensionDependencies`
+  entry.** VS Code's built-in markdown preview does NOT render Mermaid
+  natively — it requires this widely-installed extension (6.5M+
+  installs, by the VS Code markdown maintainer at Microsoft).
+  Marketplace installs of cnpg4vscode now pull it in automatically.
+  Dev-mode / VSIX users get a one-time prompt on first ER open with
+  Install / Open in Marketplace / Not now. ER markdown still opens
+  even if declined — the user just sees the diagram source.
+  *(Initial revision incorrectly assumed Mermaid was built into VS
+  Code; fixed same day after bug report.)*
+
+### Added (release prep)
+
+- **Comprehensive README** (T134) — feature overview, security
+  posture, roadmap, governance pointer. Replaces the placeholder.
+- **`docs/quickstart.md`** (T134) — user-facing 10-step walk-through
+  from install to first query. Distinct from the dev quickstart in
+  the spec dir, which is for contributors.
+- **`docs/features.md`** (T134) — per-feature walk-through with
+  screenshot placeholders ready for the v1 packaging pass.
+- **`docs/troubleshooting.md`** (T134) — common gotchas: kubeconfig
+  env on macOS, RBAC denial, expired EKS / GKE / AKS tokens,
+  proxy-strips-SPDY, missing Mermaid extension, etc.
+- **Per-platform VSIX packaging** (T131) at `scripts/package.mjs`.
+  Builds `vsce package --target <platform-arch>` for all 6 supported
+  platforms (linux-x64 / arm64, darwin-x64 / arm64, win32-x64 / arm64).
+  `pnpm package --target <one>` for a single platform. `.vscodeignore`
+  ensures the spec dir, tests, and dev configs don't ship.
+- **Webview CSP audit script** (T130) at `scripts/audit-webview-csp.mjs`.
+  Walks `dist/` for `.html` files, fails on missing CSP or escape
+  patterns. Today reports clean (no webviews); remains as a gate for
+  future cell-editing / ELK+D3 work.
+- **Extended redaction property-test corpus** (T125) — two new fixture
+  pairs (`role-variants`, `whitespace-and-comments`) covering CREATE
+  GROUP / ALTER ROLE / CREATE USER MAPPING / multi-line + tab
+  whitespace.
+- **`package.json` repository / bugs / homepage URLs** pointing at
+  `https://github.com/irulast/cnpg4vscode`. Resolves vsce's
+  relative-link warning and makes README links work in the
+  Marketplace listing.

@@ -1,0 +1,2 @@
+CREATE OR REPLACE FUNCTION call_remote() RETURNS void
+LANGUAGE plpgsql AS $$***REDACTED***$$;

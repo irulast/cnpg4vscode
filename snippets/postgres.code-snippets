@@ -1,0 +1,156 @@
+{
+  "Select with LIMIT": {
+    "scope": "postgres,sql",
+    "prefix": "sel",
+    "body": ["SELECT ${2:*} FROM ${1:table} LIMIT ${3:100};"],
+    "description": "SELECT … FROM … LIMIT N"
+  },
+  "Select where": {
+    "scope": "postgres,sql",
+    "prefix": "selw",
+    "body": [
+      "SELECT ${2:*}",
+      "  FROM ${1:table}",
+      " WHERE ${3:condition};"
+    ],
+    "description": "SELECT … FROM … WHERE …"
+  },
+  "Count rows": {
+    "scope": "postgres,sql",
+    "prefix": "cnt",
+    "body": ["SELECT count(*) FROM ${1:table};"],
+    "description": "SELECT count(*) FROM …"
+  },
+  "Insert row": {
+    "scope": "postgres,sql",
+    "prefix": "ins",
+    "body": [
+      "INSERT INTO ${1:table} (${2:columns})",
+      "VALUES (${3:values})",
+      "RETURNING ${4:*};"
+    ],
+    "description": "INSERT … VALUES … RETURNING"
+  },
+  "Update row": {
+    "scope": "postgres,sql",
+    "prefix": "upd",
+    "body": [
+      "UPDATE ${1:table}",
+      "   SET ${2:column} = ${3:value}",
+      " WHERE ${4:condition};"
+    ],
+    "description": "UPDATE … SET … WHERE …"
+  },
+  "Delete row": {
+    "scope": "postgres,sql",
+    "prefix": "del",
+    "body": [
+      "DELETE FROM ${1:table}",
+      " WHERE ${2:condition};"
+    ],
+    "description": "DELETE FROM … WHERE …"
+  },
+  "Create table": {
+    "scope": "postgres,sql",
+    "prefix": "ctbl",
+    "body": [
+      "CREATE TABLE ${1:table} (",
+      "  id          bigserial PRIMARY KEY,",
+      "  ${2:column}  ${3:type} NOT NULL,",
+      "  created_at  timestamptz NOT NULL DEFAULT now(),",
+      "  updated_at  timestamptz NOT NULL DEFAULT now()",
+      ");"
+    ],
+    "description": "CREATE TABLE with sane defaults"
+  },
+  "Create index": {
+    "scope": "postgres,sql",
+    "prefix": "cidx",
+    "body": ["CREATE INDEX ${1:idx_${2:table}_${3:column}} ON ${2:table} (${3:column});"],
+    "description": "CREATE INDEX"
+  },
+  "Create unique index": {
+    "scope": "postgres,sql",
+    "prefix": "cuidx",
+    "body": ["CREATE UNIQUE INDEX ${1:idx_${2:table}_${3:column}} ON ${2:table} (${3:column});"],
+    "description": "CREATE UNIQUE INDEX"
+  },
+  "Add column": {
+    "scope": "postgres,sql",
+    "prefix": "addcol",
+    "body": ["ALTER TABLE ${1:table} ADD COLUMN ${2:column} ${3:type}${4: NOT NULL DEFAULT ${5:value}};"],
+    "description": "ALTER TABLE … ADD COLUMN"
+  },
+  "Explain analyze": {
+    "scope": "postgres,sql",
+    "prefix": "expl",
+    "body": ["EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)", "${1:-- query}"],
+    "description": "EXPLAIN ANALYZE"
+  },
+  "Plpgsql function": {
+    "scope": "postgres,sql",
+    "prefix": "fn",
+    "body": [
+      "CREATE OR REPLACE FUNCTION ${1:fn_name}(${2:args})",
+      "RETURNS ${3:returns} LANGUAGE plpgsql AS \\$\\$",
+      "BEGIN",
+      "  ${4:-- body}",
+      "END;",
+      "\\$\\$;"
+    ],
+    "description": "CREATE OR REPLACE FUNCTION … LANGUAGE plpgsql"
+  },
+  "List tables in schema": {
+    "scope": "postgres,sql",
+    "prefix": "lst",
+    "body": [
+      "SELECT c.relname AS name, c.reltuples::bigint AS est_rows",
+      "  FROM pg_class c",
+      "  JOIN pg_namespace n ON n.oid = c.relnamespace",
+      " WHERE n.nspname = '${1:public}'",
+      "   AND c.relkind IN ('r','p')",
+      " ORDER BY c.relname;"
+    ],
+    "description": "List tables in a schema with row estimates"
+  },
+  "Find slow queries": {
+    "scope": "postgres,sql",
+    "prefix": "slow",
+    "body": [
+      "SELECT pid, now() - query_start AS duration, state, query",
+      "  FROM pg_stat_activity",
+      " WHERE state <> 'idle'",
+      "   AND query NOT ILIKE '%pg_stat_activity%'",
+      " ORDER BY duration DESC NULLS LAST",
+      " LIMIT ${1:20};"
+    ],
+    "description": "Find currently-running queries by duration"
+  },
+  "Index usage": {
+    "scope": "postgres,sql",
+    "prefix": "idxstat",
+    "body": [
+      "SELECT schemaname, relname, indexrelname, idx_scan, idx_tup_read, idx_tup_fetch",
+      "  FROM pg_stat_user_indexes",
+      " WHERE schemaname = '${1:public}'",
+      " ORDER BY idx_scan DESC;"
+    ],
+    "description": "Index-scan stats from pg_stat_user_indexes"
+  },
+  "Table sizes": {
+    "scope": "postgres,sql",
+    "prefix": "size",
+    "body": [
+      "SELECT schemaname, relname,",
+      "       pg_size_pretty(pg_total_relation_size(c.oid)) AS total,",
+      "       pg_size_pretty(pg_relation_size(c.oid)) AS heap",
+      "  FROM pg_class c",
+      "  JOIN pg_namespace n ON n.oid = c.relnamespace",
+      " WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')",
+      "   AND c.relkind IN ('r','p','m')",
+      " ORDER BY pg_total_relation_size(c.oid) DESC",
+      " LIMIT ${1:20};"
+    ],
+    "description": "Top tables by total size"
+  }
+}
