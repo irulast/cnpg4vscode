@@ -203,3 +203,114 @@ export async function getCluster(
 export function deriveClusterDetail(cr: CnpgClusterCR): CnpgCluster | null {
   return mapCluster(cr);
 }
+
+/* -------------------------------------------------------------------------
+ * Per-pod status enrichment (cluster-detail polish).
+ *
+ * Loading the Pod list for a cluster lets the detail surface show real
+ * per-instance state — which pod is primary, which are running, restart
+ * counts, age — beyond what the operator publishes on the Cluster CR's
+ * .status. Useful for live diagnostics ("the primary just restarted").
+ * ----------------------------------------------------------------------- */
+
+export interface PodSummary {
+  name: string;
+  phase: string;
+  role: "primary" | "replica";
+  ready: boolean;
+  containersReady: string; // e.g. "2/2"
+  restartCount: number;
+  age: string; // human-readable relative age
+  terminating: boolean;
+}
+
+interface PodLike {
+  metadata?: {
+    name?: string;
+    creationTimestamp?: string;
+    deletionTimestamp?: string;
+    labels?: Record<string, string>;
+  };
+  status?: {
+    phase?: string;
+    containerStatuses?: Array<{
+      name?: string;
+      ready?: boolean;
+      restartCount?: number;
+    }>;
+  };
+}
+
+export function derivePodSummary(raw: unknown): PodSummary {
+  const p = (raw ?? {}) as PodLike;
+  const name = p.metadata?.name ?? "(unnamed)";
+  const phase = p.status?.phase ?? "Unknown";
+  const labels = p.metadata?.labels ?? {};
+  const roleLabel = labels["cnpg.io/instanceRole"];
+  const role: PodSummary["role"] = roleLabel === "primary" ? "primary" : "replica";
+  const statuses = p.status?.containerStatuses ?? [];
+  const total = statuses.length;
+  const readyCount = statuses.filter((s) => s.ready === true).length;
+  const restartCount = statuses.reduce((acc, s) => acc + (s.restartCount ?? 0), 0);
+  const ready = total > 0 && readyCount === total;
+  const age = relativeAge(p.metadata?.creationTimestamp);
+  return {
+    name,
+    phase,
+    role,
+    ready,
+    containersReady: `${readyCount}/${total}`,
+    restartCount,
+    age,
+    terminating: typeof p.metadata?.deletionTimestamp === "string",
+  };
+}
+
+function relativeAge(iso: string | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  return `${day}d`;
+}
+
+export type PodListResult =
+  | { kind: "ok"; pods: PodSummary[] }
+  | { kind: "error"; error: import("./errors.js").ShapedK8sError };
+
+export async function listClusterPods(
+  kc: import("@kubernetes/client-node").KubeConfig,
+  namespace: string,
+  clusterName: string,
+): Promise<PodListResult> {
+  const { CoreV1Api } = await import("@kubernetes/client-node");
+  const { shapeK8sError } = await import("./errors.js");
+  const api = kc.makeApiClient(CoreV1Api);
+  try {
+    const res = (await api.listNamespacedPod(
+      namespace,
+      undefined, // pretty
+      undefined, // allowWatchBookmarks
+      undefined, // continue
+      undefined, // fieldSelector
+      `cnpg.io/cluster=${clusterName}`,
+    )) as { body?: { items?: unknown[] } };
+    const items = res.body?.items ?? [];
+    const pods = items
+      .map(derivePodSummary)
+      .sort((a, b) => {
+        // primary first, then by name
+        if (a.role !== b.role) return a.role === "primary" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    return { kind: "ok", pods };
+  } catch (err) {
+    return { kind: "error", error: shapeK8sError(err) };
+  }
+}

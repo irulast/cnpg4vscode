@@ -165,6 +165,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *(Initial revision incorrectly assumed Mermaid was built into VS
   Code; fixed same day after bug report.)*
 
+### Added (cluster detail enrichment)
+
+- **Per-pod status on the cluster detail surface (US2 enrichment).**
+  The markdown detail view now includes a **Pods** table listing each
+  pod that belongs to the cluster (label selector
+  `cnpg.io/cluster=<name>`), sorted primary-first then by name. Columns:
+  Role (🟢 primary / replica), Name, Phase, Ready (`n/m`), Restarts,
+  Age. Terminating pods carry an `_(terminating)_` marker. Issued via
+  `CoreV1Api.listNamespacedPod` — see `contracts/k8s-api.md § Pod
+  listing`. If the call fails (e.g. 403 on Pods in the cluster's
+  namespace) the rest of the detail surface still renders, with a
+  `Could not list pods: <message>` line in place of the table
+  (FR-007 sibling-resilience). Pure derivation is unit-tested
+  (`test/unit/cluster-pods.test.ts` — 8 assertions) and the rendering
+  branch is covered in `test/unit/cluster-detail.test.ts` (5 new
+  assertions covering healthy table, terminating marker, error
+  passthrough, empty-state, and omit-when-absent).
+
 ### Added (release prep)
 
 - **Comprehensive README** (T134) — feature overview, security

@@ -33,6 +33,17 @@ shell out to `kubectl` for any of these.
 Issued via `CustomObjectsApi.listClusterCustomObject` /
 `listNamespacedCustomObject` / `getNamespacedCustomObject`.
 
+## Pod listing (cluster-detail enrichment, US2)
+
+| Verb | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/namespaces/{namespace}/pods?labelSelector=cnpg.io/cluster={name}` | Enumerate the pods belonging to a CNPG Cluster so the detail surface can render per-instance role, phase, readiness, restart count, and age. Read-only; no field-selector / no watch. |
+
+Issued via `CoreV1Api.listNamespacedPod`. Failures degrade the detail
+surface to "Could not list pods: <message>" without breaking the rest of
+the page; in particular, a 403 on this call MUST NOT block the cluster
+detail from opening (FR-007 sibling-resilience).
+
 ## Secrets (credential lookup)
 
 | Verb | Path | Purpose |
