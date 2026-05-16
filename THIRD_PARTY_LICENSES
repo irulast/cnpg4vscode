@@ -1,19 +1,74 @@
 Third-Party Software Notices and Attribution
 ============================================
 
-This file aggregates license notices for third-party software bundled with the
-cnpg4vscode VS Code extension. It is populated as runtime dependencies are
-added. The `scripts/audit-deps.mjs` script enforces a license allowlist on
-every CI run.
+This file aggregates license notices for third-party software bundled with
+the cnpg4vscode VS Code extension. It is populated as runtime dependencies
+are added (constitution §Security: every shipped dep is listed). The
+`scripts/audit-deps.mjs` script enforces a license allowlist on every CI
+run; adding a new runtime dep to `package.json` MUST be accompanied by an
+entry here, otherwise the audit gate fails.
 
-The current runtime dependencies are:
+Scope
+-----
+"Runtime dependency" means anything `pnpm` resolves under `dependencies`
+in `package.json` and that consequently lands in `dist/extension.js` after
+esbuild bundling (or is left as an external `require()` resolved against
+the VSIX's `node_modules/`). Devtime-only packages (TypeScript, Vitest,
+ESLint, esbuild, @vscode/test-electron, etc.) are excluded — they neither
+ship in the VSIX nor run on the user's machine.
 
-  - @kubernetes/client-node — Apache-2.0
+Top-level runtime dependencies
+------------------------------
+
+  - @kubernetes/client-node@0.21.0 — Apache-2.0
     https://github.com/kubernetes-client/javascript
+    Purpose: discovers kubeconfig contexts, lists CNPG Cluster custom
+    resources, lists Pods/Secrets, opens SPDY port-forward streams to
+    cluster pods. The extension MUST NOT shell out to `kubectl`
+    (constitution §II); this library is how it talks to the Kubernetes API.
 
-Development-only dependencies are listed in package.json and excluded from
-this file because they are not shipped in the published VSIX.
+  - pg@8.20.0 — MIT
+    https://github.com/brianc/node-postgres
+    Purpose: PostgreSQL client. Used over the local end of the port-forward
+    tunnel with `ssl.ca` pinned to the CNPG-issued cluster CA. No raw
+    credentials are persisted; the pool is in-memory per ActiveConnection
+    and torn down on disconnect (FR-026, FR-031).
 
-For the complete set of bundled binaries (including those produced by
-prebuilt native modules such as better-sqlite3 once added), see the
-generated `dist/THIRD_PARTY_NOTICES.txt` file produced during `pnpm package`.
+Transitive dependencies
+-----------------------
+Every transitive dep pulled into the bundle is also under the allowlist
+in `scripts/audit-deps.mjs` (MIT / ISC / Apache-2.0 / BSD-* / 0BSD /
+Unlicense / CC0-1.0 / CC-BY-4.0 / Python-2.0 / BlueOak-1.0.0). The
+license-checker step of that script fails CI if any production-tree dep
+ever introduces a license outside that set. Run it locally with:
+
+    pnpm audit:deps
+
+to see the current complete tree. We do not vendor the per-package LICENSE
+text in this file because (a) the full set is large and changes on every
+upgrade, (b) it is reproducible from the resolved lockfile, and (c) the
+audit script is the load-bearing gate, not this attribution document.
+
+VS Code-bundled extension dependencies (extensionDependencies)
+--------------------------------------------------------------
+
+  - bierner.markdown-mermaid
+    Mermaid renderer for VS Code's built-in Markdown preview. Required so
+    the ER diagram surface (US6) renders inline rather than showing raw
+    Mermaid source. Installed automatically alongside cnpg4vscode by the
+    Marketplace; VSIX/dev users see a one-time prompt on first ER open.
+    Not bundled into our VSIX — VS Code resolves it independently.
+
+Bundled binaries / prebuilds
+----------------------------
+None at this time. If a future change introduces a native module with
+prebuilt binaries (e.g. better-sqlite3, sharp), each prebuild MUST be
+listed here under "Bundled binaries" with its individual license, and the
+packaging step MUST emit `dist/THIRD_PARTY_NOTICES.txt` alongside the
+VSIX so the per-platform attribution travels with the artifact.
+
+Reporting an attribution gap
+----------------------------
+If a dependency is missing from this file, please file an issue at
+https://github.com/irulast/cnpg4vscode/issues — the audit-deps gate is the
+mechanical check, but it cannot catch a stale prose summary.
