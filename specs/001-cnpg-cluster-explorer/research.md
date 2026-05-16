@@ -125,6 +125,21 @@ records the **Decision**, **Rationale**, and **Alternatives considered**.
 
 ## 6. Result grid with cell editing
 
+> **REVISED 2026-05-16**: Reconfirms the original §6 decision
+> (glide-data-grid in a webview) after the Phase 7.5 detour to a
+> NotebookRendererProvider (T104). The NotebookRenderer remains as the
+> **lightweight inline view** for the 95% "scan results, write next
+> query" case; the full **Grid Editor** lands as a dedicated webview
+> tab to deliver IDE-parity editing (FR-037 / FR-038 / FR-039). Both
+> share the same `BuiltStatement` orchestrator at `src/sql/cell-edit-
+> orchestrator.ts` — only the consumer surface differs. Spec
+> divergence rationale: serious DB IDEs (DBeaver / DataGrip /
+> TablePlus / Beekeeper / Postico) all use a dedicated grid tab, not
+> inline-with-query output, because cell editing wants the entire
+> tab's keystrokes, smooth virtualized scrolling for big result sets,
+> and a sticky status bar — none of which a notebook cell output can
+> do well.
+
 - **Decision**: Webview hosting **glide-data-grid** ^6 in a small React
   ^18 bundle. Pagination via `pg-cursor` 1 k-row pages; the grid only
   retains the visible window plus dirty rows.
@@ -133,17 +148,44 @@ records the **Decision**, **Rationale**, and **Alternatives considered**.
   licensed. AG Grid Community is heavier and Enterprise features are
   not free. TanStack Table is headless (we'd still need a virtualizer
   and rendering layer). Tabulator is DOM-based and slows past ~100 k.
+- **Bundle weight**: glide-data-grid + minimal React runtime is
+  ~150 KB gzipped; budgeted against the current ~187 KB extension
+  bundle (the React bundle is a separate `dist/webviews/grid/bundle.js`
+  loaded only when the Grid Editor opens, so the activation-path cost
+  is zero).
 - **PK-based UPDATE/DELETE**: introspection attaches
   `pkColumns: string[]` to each result-set descriptor when the query is
-  a simple `SELECT … FROM <single_table>` (detected via the AST parser
-  from §9). Edits emit parameterized `UPDATE … WHERE pk = $1 [AND pk2
-  = $2]`. If no PK is detectable, the grid is read-only with a banner.
+  a simple `SELECT … FROM <single_table>` (detected via the conservative
+  scanner from §6.5 / `src/pg/result-descriptor.ts`). Edits emit
+  parameterized `UPDATE … WHERE pk = $1 [AND pk2 = $2]` via the
+  already-landed `src/sql/update-builder.ts`. If no PK is detectable,
+  the grid is read-only with a banner.
+- **Per-type cell editors**: glide-data-grid's custom-cell-renderer
+  protocol — text / number / boolean / date / timestamp use the
+  built-in editors; `jsonb` / `json` open an in-grid popout textarea
+  (Monaco-embedded considered but rejected as bundle weight); enum
+  columns query `pg_enum` once on column-descriptor load and surface
+  the allowed values as a dropdown.
 - **Theme**: glide-data-grid theme tokens mapped from `--vscode-*` CSS
   variables; honor `editor.fontSize`, `editor.fontFamily`, and
-  `workbench.colorTheme` contrast.
+  `workbench.colorTheme` contrast. Hard-coded hex values inside the
+  webview bundle fail the theme-contrast snapshot test (T103, revived).
+- **Persistence**: Grid layout state (visible columns, order, widths,
+  sort, filter, scroll position) persists across reload via
+  `context.workspaceState`. Keyed by `(contextName, namespace,
+  clusterName, database, schema, table)`. NEVER includes cell data
+  per Constitution §Security.
+- **FK navigation**: Right-click an FK cell → **Go to referenced row**
+  opens a NEW Grid Editor tab on the referenced table, filtered to the
+  FK target value. Implementation: the result-descriptor query joins
+  `pg_constraint` with `confrelid` to discover the referenced table on
+  column-descriptor load.
 - **Alternatives considered**: Notebook renderer (no in-place editing
-  on large grids); custom editor (still needs a grid lib); AG Grid /
-  Tabulator / TanStack as above.
+  on large grids — kept as the lightweight inline view); custom editor
+  (still needs a grid lib); AG Grid (~400 KB; range-selection and fill-
+  handle behind the Enterprise paywall); Tabulator (DOM-based, slows
+  past ~100 k); TanStack Table v8 (headless — ~30 KB but we'd build
+  the renderer + virtualizer + cell-editor layer from scratch).
 
 ## 7. ER diagram rendering
 

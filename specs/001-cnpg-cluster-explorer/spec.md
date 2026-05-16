@@ -277,6 +277,29 @@ the plan.
    (e.g., a column is added via psql), **Then** the diagram either re-
    renders on the next refresh interval or shows a clear "schema changed
    — refresh" prompt; it never silently displays stale relationships.
+5. **Given** a TABLE node in the Schema view and an active connection,
+   **When** the user right-clicks the table and picks **CNPG: Open in
+   Grid Editor**, **Then** a dedicated editor tab opens showing the
+   table's rows in a virtualized grid, with PK and FK columns marked,
+   per-column sort/filter affordances, and (if the connection is in
+   Write mode) cell editing enabled. Closing the tab MUST NOT close
+   the connection or invalidate the schema cache.
+6. **Given** an open Grid Editor with several pending cell edits,
+   **When** the user clicks **Apply**, **Then** they see a single
+   modal preview listing every dirty row's parameterized UPDATE before
+   any statement executes; confirming runs them in order, and any
+   per-row failure surfaces inline on that row (the rest still apply).
+   The dirty-row gutter marks clear as each row succeeds.
+7. **Given** an open Grid Editor on `public.posts` with a `user_id`
+   FK to `public.users(id)`, **When** the user right-clicks a `user_id`
+   cell and picks **Go to referenced row**, **Then** a new Grid Editor
+   tab opens on `public.users` filtered to that row's id; closing the
+   new tab leaves the original Grid Editor unchanged.
+8. **Given** a Grid Editor where the user has resized columns, applied
+   a sort, and added a filter, **When** the user closes VS Code and
+   reopens the workspace, **Then** reopening the same table restores
+   the previous column widths, sort, and filter (per FR-039 — no cell
+   data is persisted, only layout primitives).
 
 ---
 
@@ -437,6 +460,9 @@ the plan.
   connection is in Write mode. Edits MUST be staged client-side and
   committed only when the user explicitly applies them; the apply step
   MUST preview the generated UPDATE/DELETE statements before execution.
+  *(See FR-037 / FR-038 / FR-039 for the dedicated Grid Editor surface
+  that delivers full IDE-parity editing; the inline notebook renderer
+  remains the lightweight "just-looking" view for the 95% case.)*
 
 - **FR-026** *(Visual editors)*: The extension MUST provide visual
   editors for index and constraint definitions on tables (create / edit
@@ -565,6 +591,70 @@ the plan.
   its result). If no notebook is open, the extension MUST prompt the
   user to pick a connection, then create a new notebook containing the
   statement.
+
+- **FR-037** *(Grid Editor surface)*: The extension MUST provide a
+  dedicated Grid Editor surface (a `vscode.WebviewPanel` opened in a
+  separate editor tab) that delivers full DB-IDE-parity tabular
+  editing. The Grid Editor MUST be reachable from at least two
+  entrypoints: (a) right-clicking a TABLE (or VIEW / MATERIALIZED
+  VIEW) in the Schema tree → **CNPG: Open in Grid Editor**; (b) the
+  command palette via **CNPG: Open Table in Grid Editor...**. Opening
+  on a VIEW or MATERIALIZED VIEW MUST render the grid in read-only
+  mode regardless of the connection mode (the view's underlying
+  storage is not directly editable). The Grid Editor MUST be styled
+  exclusively via `--vscode-*` CSS variables (no hard-coded colors —
+  enforced by the theme-snapshot test) and MUST pass the webview CSP
+  audit (`scripts/audit-webview-csp.mjs`).
+
+- **FR-038** *(Grid Editor capabilities)*: The Grid Editor MUST
+  support, at minimum:
+  - Virtualized rendering for ≥100k rows without scroll jitter (real
+    DB-IDE feel — DBeaver / DataGrip / TablePlus / Beekeeper-parity).
+  - Per-type cell editors (text, number, boolean, date / timestamp,
+    `jsonb` / `json` via a popout editor, enum-typed columns rendered
+    as dropdowns from the column's underlying `pg_type` allowed
+    values).
+  - Distinct visual treatment for NULL (grayed `NULL`) and DEFAULT
+    (italic `DEFAULT`); explicit keystrokes for "set NULL" and "reset
+    to DEFAULT" on the focused cell.
+  - Per-column header affordances: sort, multi-column sort (Shift +
+    click), single-column filter UI, hide / show, freeze first N
+    columns, resize (persisted per `(connection, table)` in workspace
+    state). The header MUST mark the PK column(s) with a 🔑 indicator
+    and FK columns with a `→` indicator that, on right-click, offers
+    **Go to referenced row** which opens a new Grid Editor tab for
+    the referenced table filtered to the FK target value.
+  - Dirty-row tracking: a left-gutter mark on rows with pending edits
+    plus an "X unsaved" status in the footer. **Apply** commits all
+    dirty rows in a single client-side preview of the assembled
+    UPDATE statements (one per dirty row, parameterized — same gate
+    the cell-edit orchestrator already enforces) and a single user
+    confirmation. **Revert** discards pending edits.
+  - Row-level operations: **Add Row** (opens an in-grid row form
+    seeded with column defaults), **Delete Selected** (requires the
+    same typed-name confirmation gate as DROP / TRUNCATE — the
+    typed name is the table identifier). Multi-row selection is
+    supported.
+  - Result-set affordances: footer shows `<rows shown> of <total> ·
+    <duration>ms · PK: <cols>`. The **Refresh** button re-runs the
+    underlying SELECT against the same connection. **Export** offers
+    CSV, JSON, and INSERT-statement export of the selection (or all
+    rows if nothing is selected); the SQL form routes through
+    `redact()` so no credential literal can survive export to disk.
+  - Connection mode mirroring: when the bound connection toggles
+    between read-only and Write modes, the Grid Editor's edit
+    affordances MUST follow without requiring a tab reopen.
+
+- **FR-039** *(Grid Editor persistence)*: The Grid Editor's per-table
+  state — visible columns, column order, column widths, sort columns,
+  filter values, scroll position — MUST persist across VS Code reload
+  in the per-workspace storage (same surface as query history).
+  Persistence MUST be keyed by `(contextName, namespace, clusterName,
+  database, schema, table)` so reopening the same table restores the
+  user's preferred layout, while a different table starts with the
+  defaults. Persisted state MUST NOT include any cell data (in-memory
+  result sets are never persisted, per Constitution §Security) — only
+  the layout primitives above.
 
 ### Key Entities
 

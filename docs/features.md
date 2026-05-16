@@ -354,13 +354,13 @@ Ready to paste into a support thread or GitHub issue.
 Every key is namespaced `cnpg4vscode.*`. See **File > Preferences >
 Settings > Extensions > CloudNativePG** for the full list. Highlights:
 
-| Setting | Default | Purpose |
-|---|---|---|
-| `cnpg4vscode.refreshIntervalSeconds` | `30` | Cluster-tree auto-refresh cadence. |
-| `cnpg4vscode.results.pageSize` | `1000` | Rows rendered per result-grid output. |
-| `cnpg4vscode.notebooks.location` | `.cnpg/notebooks` | Workspace-relative root for per-cluster saved notebooks. |
-| `cnpg4vscode.confirmation.requireTypedName` | `true` | Require typing the FQN on destructive actions. Disabling logs a WARN per action. |
-| `cnpg4vscode.er.warnOverTables` | `100` | Show the large-schema warning when an ER diagram exceeds this. |
-| `cnpg4vscode.log.level` | `info` | Verbosity of the output channel. |
+| Setting                                     | Default            | Purpose                                                                          |
+| ------------------------------------------- | ------------------ | -------------------------------------------------------------------------------- |
+| `cnpg4vscode.refreshIntervalSeconds`        | `30`               | Cluster-tree auto-refresh cadence.                                               |
+| `cnpg4vscode.results.pageSize`              | `1000`             | Rows rendered per result-grid output.                                            |
+| `cnpg4vscode.notebooks.location`            | `.cnpg/notebooks`  | Workspace-relative root for per-cluster saved notebooks.                         |
+| `cnpg4vscode.confirmation.requireTypedName` | `true`             | Require typing the FQN on destructive actions. Disabling logs a WARN per action. |
+| `cnpg4vscode.er.warnOverTables`             | `100`              | Show the large-schema warning when an ER diagram exceeds this.                   |
+| `cnpg4vscode.log.level`                     | `info`             | Verbosity of the output channel.                                                 |
 
 The full schema lives in the contract: [`specs/001-cnpg-cluster-explorer/contracts/settings.md`](../specs/001-cnpg-cluster-explorer/contracts/settings.md).
