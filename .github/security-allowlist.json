@@ -1,0 +1,26 @@
+{
+  "_README": [
+    "Security advisory allowlist for spec 002 / FR-031.",
+    "",
+    "WARNING: Adding an entry here weakens the CI security gate.",
+    "",
+    "Every entry MUST carry a non-empty 'justification' so reviewers",
+    "can challenge it in PR review. Stale entries (allowlisted",
+    "advisory no longer in the dependency audit output) trip the gate",
+    "with exit code 3 — that is a feature, not a bug: it forces the",
+    "allowlist to stay clean as deps churn.",
+    "",
+    "Entry shape:",
+    "  {",
+    "    \"advisoryId\":  <numeric id from npm/pnpm audit>,",
+    "    \"justification\": \"<why this is acceptable, e.g. 'false positive — the vulnerable code path is unreachable from the extension entrypoint'>\",",
+    "    \"reviewedBy\":  \"<github login>\",",
+    "    \"reviewedAt\":  \"<ISO 8601 date>\"",
+    "  }",
+    "",
+    "See specs/002-github-actions-deploy/contracts/script-cli.md",
+    "for the scan-advisories.mjs contract."
+  ],
+  "version": 1,
+  "allowed": []
+}

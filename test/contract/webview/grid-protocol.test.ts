@@ -333,7 +333,7 @@ describe("host-side message builders", () => {
         fontSize: 13,
       },
       persistedState: null,
-      connection: { mode: "write", database: "postgres", cluster: "app-db" },
+      connection: { id: "ctx/ns/cluster/cred/postgres", mode: "write", database: "postgres", cluster: "app-db" },
     });
     expect(m.type).toBe("init");
     expect(m.payload.descriptor.editable).toBe(true);
@@ -375,7 +375,7 @@ describe("host-side message builders", () => {
         fontFamily: "monospace", fontSize: 13,
       },
       persistedState: null,
-      connection: { mode: "readonly", database: "d", cluster: "c" },
+      connection: { id: "c/cred/d", mode: "readonly", database: "d", cluster: "c" },
     });
     const round = JSON.parse(JSON.stringify(initMsg));
     expect(round).toEqual(initMsg);

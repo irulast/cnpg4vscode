@@ -1,0 +1,127 @@
+name: Publish recover
+
+# Spec 002 / T016 / FR-017a. Manual recovery for partial-success
+# publish runs. The maintainer copies the `gh workflow run` line from
+# the failing publish.yml's summary and runs it here; this workflow
+# republishes ONLY the listed targets for the same tag, using either
+# the cached artifact bundle (if still within the 90-day retention) or
+# a fresh build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to recover (e.g. v0.2.0 or v0.2.0-beta.1)"
+        required: true
+        type: string
+      targets:
+        description: "Comma-separated platform list (e.g. darwin-arm64,win32-x64)"
+        required: true
+        type: string
+
+# Share the publish-${{ tag }} concurrency group with publish.yml so
+# the maintainer can't trigger recovery WHILE the original publish is
+# still attempting per-target retries.
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight (refuse hosted; validate tag)
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    if: github.repository == 'irulast/cnpg4vscode'
+    outputs:
+      channel: ${{ steps.tag.outputs.channel }}
+      version: ${{ steps.tag.outputs.version }}
+      sha: ${{ steps.tagsha.outputs.sha }}
+    steps:
+      - name: Refuse hosted runners
+        run: |
+          if [[ "${RUNNER_ENVIRONMENT:-self-hosted}" != "self-hosted" ]]; then
+            echo "::error::Hosted runner detected (${RUNNER_ENVIRONMENT}); this workflow requires self-hosted."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve tag → SHA
+        id: tagsha
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG} does not exist in this repository."
+            exit 1
+          fi
+          SHA=$(git rev-list -n 1 "refs/tags/${TAG}")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate tag at its own commit
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          # Check out the tag's commit so validate-tag sees the right
+          # package.json#version.
+          git checkout "refs/tags/${TAG}"
+          OUT=$(node scripts/ci/validate-tag.mjs "${TAG}")
+          echo "$OUT"
+          CHANNEL=$(echo "$OUT" | sed -n 's/^channel=\([^;]*\);.*/\1/p')
+          VERSION=$(echo "$OUT" | sed -n 's/^.*;version=\(.*\)$/\1/p')
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  recover:
+    name: Republish failed targets
+    needs: preflight
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Try to download the artifact bundle from the original publish
+      # run (if still within retention). If it's gone, fall back to
+      # rebuilding for the requested targets.
+      - name: Attempt to download original artifact bundle
+        id: download
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: vsix-bundle-${{ inputs.tag }}
+          path: vsix-bundle/
+      - name: Build artifacts if bundle missing
+        if: steps.download.outcome != 'success'
+        run: |
+          echo "::notice::Original artifact bundle not found; rebuilding for the requested targets."
+          pnpm build
+          IFS=',' read -ra TARGETS <<< "${{ inputs.targets }}"
+          for t in "${TARGETS[@]}"; do
+            pnpm package -- --target "$t"
+          done
+          mkdir -p vsix-bundle
+          mv *.vsix vsix-bundle/ 2>/dev/null || true
+          mv dist/*.vsix vsix-bundle/ 2>/dev/null || true
+          ls -la vsix-bundle/
+      - name: Republish requested targets
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          node scripts/ci/publish-vsix.mjs \
+            --tag "${{ inputs.tag }}" \
+            --channel "${{ needs.preflight.outputs.channel }}" \
+            --artifacts-dir ./vsix-bundle \
+            --targets "${{ inputs.targets }}"

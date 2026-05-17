@@ -162,6 +162,47 @@ The renderer caps preview rows at `cnpg4vscode.results.pageSize`
 notice. Add an explicit `LIMIT` to your query, or paginate with
 `OFFSET`.
 
+## Grid Editor
+
+### "Cell editing requires a primary key"
+
+The Grid Editor's edit affordances stay greyed out for any table
+without a primary key, even in Write mode. Without a PK we cannot
+build a row-identifying `WHERE` clause that's guaranteed not to
+update neighbouring rows. Add a PK (or open the source table behind
+a view) to edit. Read-only viewing works without a PK.
+
+### "Cannot open Data Grid overlay editor, because portal not found"
+
+A renderer-side error indicating the bundled HTML didn't include the
+overlay portal. This should never reach a Marketplace install — if
+you see it on a development build, run `pnpm build` to regenerate
+the bundles and reload the window.
+
+### Grid Editor tab "loses focus" when I click elsewhere
+
+VS Code disposes hidden webviews by default. The Grid Editor sets
+`retainContextWhenHidden: true` so the tab keeps its state when you
+switch away — your scroll position, dirty edits, and column widths
+all survive. If you ever see fresh state on tab switch (no dirty
+marks, scrolled back to top), file a bug — the retain flag should
+make that impossible.
+
+### Restored Grid Editor tab shows "connection unavailable"
+
+VS Code restored the tab from workspace state but the cluster
+connection isn't active yet (connections don't auto-restore — they
+require re-expanding the cluster in the CNPG view for security).
+Click the cluster in the CloudNativePG view to reconnect; once the
+connection is live, reopen the table from the schema tree (the
+restored placeholder tab will be replaced by a fresh Grid Editor).
+
+### Export wrote fewer rows than I expected
+
+Export captures up to **10 000 rows** of the current filter + sort.
+If your table has more, narrow the filter or use `psql` /
+`pg_dump --inserts` for full-table exports.
+
 ## Reporting a bug
 
 **Command Palette** → **CNPG: Report a Problem** assembles a Markdown

@@ -45,6 +45,7 @@ import { buildGridWebviewHtml } from "./html-template.js";
 import { snapshotThemeTokens } from "./theme.js";
 import { fetchResultSetDescriptor } from "./descriptor.js";
 import { buildSelectPage, buildSelectCount } from "../sql/select-builder.js";
+import { toCsv, toJson, toInserts } from "./export.js";
 import { runBulkApply, type DirtyRowRequest } from "./bulk-apply.js";
 import { buildDelete, buildInsert, type BuiltStatement, type ColumnChange } from "../sql/update-builder.js";
 import {
@@ -67,6 +68,13 @@ export interface GridEditorHostDeps {
   readonly table: string;
   /** Optional initial filters (used by FK navigation to seed a filtered view). */
   readonly initialFilters?: ReadonlyArray<{ column: string; op: "eq"; value: string }>;
+  /**
+   * Optional pre-existing panel to adopt. VS Code passes one of these to
+   * the `WebviewPanelSerializer` (T158) when restoring a hibernated tab;
+   * the host re-uses it rather than opening a new tab. When omitted, the
+   * host creates its own panel.
+   */
+  readonly existingPanel?: vscode.WebviewPanel;
   /** Called when the user requests opening another table (FK drill-down). */
   readonly openReferenced: (target: {
     conn: ActiveConnection;
@@ -106,18 +114,33 @@ export class GridEditorHost implements vscode.Disposable {
     this.layoutState = this.loadPersistedState();
 
     const title = `${deps.schema}.${deps.table}`;
-    this.panel = vscode.window.createWebviewPanel(
-      "cnpg.gridEditor",
-      title,
-      vscode.ViewColumn.Active,
-      {
+    if (deps.existingPanel) {
+      // Adopt the panel VS Code rebuilt during workspace restore (T158).
+      // Re-set its options so the localResourceRoots + script enablement
+      // match what we'd produce on a fresh create — VS Code persists the
+      // view type and visibility, NOT the security knobs.
+      this.panel = deps.existingPanel;
+      this.panel.webview.options = {
         enableScripts: true,
-        retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.joinPath(deps.extensionUri, "dist", "webviews", "grid"),
         ],
-      },
-    );
+      };
+      this.panel.title = title;
+    } else {
+      this.panel = vscode.window.createWebviewPanel(
+        "cnpg.gridEditor",
+        title,
+        vscode.ViewColumn.Active,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [
+            vscode.Uri.joinPath(deps.extensionUri, "dist", "webviews", "grid"),
+          ],
+        },
+      );
+    }
 
     const bundleUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(deps.extensionUri, "dist", "webviews", "grid", "bundle.js"),
@@ -230,8 +253,7 @@ export class GridEditorHost implements vscode.Disposable {
         await this.onLayoutChanged(msg.payload.state);
         return;
       case "exportRequested":
-        // T157 polish — leave a friendly log for now.
-        log.info("grid.host.exportRequested", { format: msg.payload.format, scope: msg.payload.scope });
+        await this.onExportRequested(msg.payload.format, msg.payload.scope);
         return;
       case "refreshRequested":
         await this.onLoadPage({ offset: 0, limit: DEFAULT_PAGE_SIZE });
@@ -288,6 +310,7 @@ export class GridEditorHost implements vscode.Disposable {
         theme: snapshotThemeTokens(),
         persistedState: this.layoutState,
         connection: {
+          id: this.deps.conn.id,
           mode: this.deps.conn.connection.mode,
           database: this.deps.conn.database,
           cluster: this.deps.conn.cluster.clusterName,
@@ -524,6 +547,92 @@ export class GridEditorHost implements vscode.Disposable {
       table: col.fk.refTable,
       initialFilters: [{ column: col.fk.refColumn, op: "eq", value: valueAsString }],
     });
+  }
+
+  private async onExportRequested(
+    format: "csv" | "json" | "sql-insert",
+    scope: "selection" | "allRows",
+  ): Promise<void> {
+    if (!this.descriptor) return;
+    log.info("grid.host.exportRequested", { format, scope });
+
+    // Selection-scoped export needs the renderer to forward the
+    // selection range; today the protocol doesn't carry that, so we
+    // fall back to all rows and surface the limitation.
+    if (scope === "selection") {
+      log.info("grid.host.export.selectionFallback", { reason: "selection scope not wired" });
+    }
+
+    const filters = this.layoutState.filters.map((f) =>
+      f.value === undefined
+        ? ({ column: f.column, op: f.op as never })
+        : ({ column: f.column, op: f.op as never, value: f.value }),
+    );
+    const sort = this.layoutState.sort;
+    // 10 000 is the SELECT builder's MAX_LIMIT — matches the largest
+    // page the host will ever emit and avoids unbounded result sets.
+    const pageStmt = buildSelectPage({
+      schema: this.deps.schema,
+      table: this.deps.table,
+      sort,
+      filters,
+      limit: 10_000,
+      offset: 0,
+    });
+    let rows: ReadonlyArray<ReadonlyArray<unknown>> = [];
+    try {
+      const res = await this.deps.conn.connection.query(pageStmt.text, pageStmt.values);
+      rows = res.rows.map((r) =>
+        this.descriptor!.columns.map((c) => (r as Record<string, unknown>)[c.name] ?? null),
+      );
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      log.error("grid.host.export.queryFailed", { reason });
+      vscode.window.showErrorMessage(`Export failed: ${reason}`);
+      return;
+    }
+
+    const cols = this.descriptor.columns.map((c) => ({ name: c.name, pgType: c.pgType }));
+    let blob: string;
+    let defaultExt: string;
+    switch (format) {
+      case "csv":
+        blob = toCsv(rows, cols);
+        defaultExt = "csv";
+        break;
+      case "json":
+        blob = toJson(rows, cols);
+        defaultExt = "json";
+        break;
+      case "sql-insert":
+        blob = toInserts(
+          this.descriptor.target.schema,
+          this.descriptor.target.table,
+          rows,
+          cols,
+        );
+        defaultExt = "sql";
+        break;
+    }
+
+    const defaultName = `${this.deps.schema}.${this.deps.table}.${defaultExt}`;
+    const target = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(defaultName),
+      filters: { [defaultExt.toUpperCase()]: [defaultExt] },
+      saveLabel: `Export as ${defaultExt.toUpperCase()}`,
+    });
+    if (!target) return;
+    try {
+      await vscode.workspace.fs.writeFile(target, Buffer.from(blob, "utf8"));
+      vscode.window.showInformationMessage(
+        `Exported ${rows.length} row(s) to ${target.fsPath}`,
+      );
+      log.info("grid.host.export.ok", { rows: rows.length, format, path: target.fsPath });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      log.error("grid.host.export.writeFailed", { reason });
+      vscode.window.showErrorMessage(`Could not write export file: ${reason}`);
+    }
   }
 
   private async onLayoutChanged(state: GridEditorState): Promise<void> {

@@ -176,6 +176,106 @@ Disabling the confirmation (`cnpg4vscode.confirmation.requireTypedName`)
 still requires a yes/no modal AND logs a WARN line on every
 destructive action.
 
+## Grid Editor — DB-IDE-parity table editing
+
+> `[screenshot: grid editor showing a tables's rows, PK column flagged
+> with a key glyph, one cell dirty, Apply button highlighted]`
+
+The **Grid Editor** is a full-tab webview built on a canvas-rendered
+virtualized data grid — DB-IDE-parity for browsing, filtering,
+sorting, and editing a single table's rows without leaving VS Code.
+
+### Opening it
+
+- **From the schema tree**: right-click any table, view, or
+  materialized view → **Open in Grid Editor**.
+- **From the Command Palette**: **CNPG: Open Table in Grid Editor...**
+  → pick a connection (if more than one is active) → pick a schema →
+  pick a relation.
+
+The tab opens against the same connection the schema tree is using;
+it inherits the current Read/Write mode and stays in lockstep with
+status-bar toggles.
+
+### Browsing rows
+
+- **Sticky header** + virtualized rows (10 000-row pages, scrolls
+  without re-fetching).
+- **Per-column glyphs**: 🔑 PK column, 🔗 FK column, ▲/▼ active
+  sort, 🔎 active filter.
+- **Click a header** to toggle sort asc → desc → unsorted.
+- **Click the column chevron** for the actions menu: sort
+  asc/desc/clear, set a filter, clear the filter.
+- **Filter modal** supports `=`, `≠`, `<`, `≤`, `>`, `≥`, `LIKE`,
+  `ILIKE`, `IS NULL`, `IS NOT NULL` — values bind as parameters, not
+  concatenated.
+- **Ctrl+F** opens the in-grid search.
+
+### Editing cells
+
+> Only available on **TABLEs with a primary key** in **Write mode**.
+> Views and materialized views are read-only; tables without a PK
+> can't be cell-edited because row identity isn't safe.
+
+- **Double-click** a cell to open its editor. Type defaults are
+  inferred from the PG type: text, number (integer / decimal),
+  boolean checkbox, date/time/timestamp/timestamptz with the right
+  precision, jsonb popout, enum dropdown.
+- Empty text in a nullable column → `NULL`.
+- Dirty edits buffer in memory with a count badge on the **Apply**
+  button. **Revert** discards everything dirty.
+- **Apply** opens a modal preview showing every parameterized
+  `UPDATE` that will run, in order. Confirm to execute; cancel to
+  back out.
+- Per-row results stream in: applied rows clear their dirty mark
+  immediately; failed rows surface their PG error in a banner so the
+  user can fix and re-Apply.
+- The **read-only gate** is enforced on the wire: every UPDATE wraps
+  in `BEGIN; SET LOCAL transaction_read_only = on; …; ROLLBACK` when
+  the connection is in read-only mode, so even a bypassed client
+  gate can't write.
+
+### FK navigation
+
+Right-click any FK cell → **Go to <refSchema>.<refTable> where
+<refColumn> = '<value>'** opens a new Grid Editor tab on the
+referenced table, pre-filtered to the row(s) the FK points at.
+
+### Export
+
+Toolbar **⬇ Export ▾** offers three formats:
+
+- **CSV** (RFC 4180): CRLF line endings, double-quote escaping,
+  `NULL` → empty cell.
+- **JSON**: top-level array of `{column: value}` objects.
+- **SQL INSERT**: a runnable script wrapped in `BEGIN;`/`COMMIT;`
+  with literals inlined (escape-safe). Every string cell passes
+  through the same credential-redaction chokepoint as logs — a
+  payload containing `CREATE ROLE … PASSWORD '...'` exports with the
+  literal scrubbed.
+
+The export captures up to 10 000 rows of the current filter+sort. A
+save dialog picks the destination; the file is written via VS Code's
+workspace FS API so remote/WSL workspaces work transparently.
+
+### Layout persistence
+
+Column widths, sort, filters, and frozen-column counts are persisted
+per `(context, namespace, cluster, database, schema, table)` tuple in
+the workspace state. Reload the workspace and the grid comes back
+with the same layout it had before. A defense-in-depth allowlist on
+serialize AND deserialize drops any field outside the layout-
+primitive set, so a corrupted state can't smuggle extra data.
+
+### Tab hibernation
+
+Closing VS Code with Grid Editor tabs open and re-opening the
+workspace later restores those tabs to the same spot. If the
+underlying database connection is no longer active, the tab opens
+with a "reconnect to the cluster to restore this Grid Editor"
+placeholder — re-expand the cluster in the CloudNativePG view and
+reopen the table from the schema tree.
+
 ## ER diagrams
 
 > `[screenshot: Mermaid ER diagram showing tables and FK relationships]`
