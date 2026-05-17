@@ -71,13 +71,32 @@ try {
 const versions = Array.isArray(parsed?.versions) ? parsed.versions : [];
 const wantPreRelease = channel === "pre-release";
 
+/**
+ * Extract the pre-release flag from a Marketplace version entry.
+ *
+ * `vsce show --json` does NOT expose `preRelease` at the top level
+ * of each version. The flag lives inside `properties[]` as the value
+ * for `key === "Microsoft.VisualStudio.Code.PreRelease"`. Older
+ * scripts (and this one's first draft) checked `v.preRelease`
+ * directly and always got `undefined` → every entry was treated as
+ * stable, masking real collisions on the pre-release channel.
+ */
+function isPreReleaseVersion(v) {
+  // Fall back to a top-level field in case future vsce versions add one.
+  if (typeof v.preRelease === "boolean") return v.preRelease;
+  if (!Array.isArray(v.properties)) return false;
+  const prop = v.properties.find(
+    (p) => p && p.key === "Microsoft.VisualStudio.Code.PreRelease",
+  );
+  if (!prop) return false;
+  // Marketplace stores the value as a string "true" / "false".
+  return prop.value === "true" || prop.value === true;
+}
+
 const collision = versions.some((v) => {
   if (typeof v?.version !== "string") return false;
   if (v.version !== version) return false;
-  // Channel match: Marketplace marks pre-release versions with
-  // `preRelease: true`. Absence (undefined / null / false) means stable.
-  const isPre = v.preRelease === true;
-  return isPre === wantPreRelease;
+  return isPreReleaseVersion(v) === wantPreRelease;
 });
 
 if (collision) {

@@ -30,11 +30,32 @@ function run(
 ): RunResult {
   const dir = mkdtempSync(join(tmpdir(), "check-mkt-"));
   try {
-    writeFileSync(join(dir, "vsce-stub.json"), JSON.stringify(vsceStub));
+    // Translate the test's `preRelease: boolean` fixture shape into the
+    // actual `vsce show --json` shape, which carries the flag inside
+    // `properties[]` (key=Microsoft.VisualStudio.Code.PreRelease, value="true"/"false").
+    const writeFixture = (): void => {
+      if (vsceStub.mode === "ok") {
+        const marketplace = {
+          versions: vsceStub.versions.map((v) => ({
+            version: v.version,
+            properties: [
+              {
+                key: "Microsoft.VisualStudio.Code.PreRelease",
+                value: v.preRelease ? "true" : "false",
+              },
+            ],
+          })),
+        };
+        writeFileSync(join(dir, "vsce-stub.json"), JSON.stringify(marketplace));
+      } else {
+        writeFileSync(join(dir, "vsce-stub.json"), JSON.stringify(vsceStub));
+      }
+    };
+    writeFixture();
     const fakeVsce = `#!/usr/bin/env bash
 set -eu
-case "$(cat "${dir}/vsce-stub.json" | grep -o '"mode": *"[^"]*"' | sed 's/.*"\\([^"]*\\)"$/\\1/')" in
-  ok)   cat "${dir}/vsce-stub.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({"versions": d["versions"]}))' ;;
+case "${vsceStub.mode}" in
+  ok)   cat "${dir}/vsce-stub.json" ;;
   fail) echo "simulated vsce failure" >&2; exit 1 ;;
   garbage) echo "{not-json" ;;
 esac
