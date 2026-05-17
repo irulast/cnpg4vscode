@@ -70,6 +70,14 @@ export function buildGridWebviewHtml(opts: BuildHtmlOptions): string {
 </head>
 <body>
   <div id="root"></div>
+  <!--
+    glide-data-grid renders its cell-edit overlay into this portal
+    via React's createPortal. It expects this element to already
+    exist in the DOM as the last child of <body>; without it the
+    overlay silently can't mount and cells appear "uneditable" even
+    though onCellEdited is wired up correctly.
+  -->
+  <div id="portal"></div>
   <script nonce="${opts.nonce}" src="${opts.bundleSrc}"></script>
 </body>
 </html>`;
