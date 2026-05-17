@@ -8,10 +8,13 @@ and visualize relationships with ER diagrams. No `kubectl`
 shell-outs, no credential persistence to disk, native VS Code surfaces
 throughout.
 
-> **Status**: pre-1.0 (`0.x.y`). The full feature set across spec 001's
-> six user stories is implemented end-to-end; spec 002's CI/CD pipeline
-> is in place and Marketplace releases are automated. See the
-> [roadmap](#roadmap) for what's landed and what's next.
+> **Status**: **v1.0.0 live on the VS Code Marketplace** as of
+> 2026-05-17. Install with
+> `code --install-extension Irulast.cnpg4vscode` or search
+> "CloudNativePG" in the **Extensions** view. The full feature set
+> across spec 001's six user stories is implemented end-to-end and
+> spec 002's CI/CD pipeline ships releases automatically from
+> tag pushes.
 
 ## Features
 
@@ -212,12 +215,15 @@ For dev-environment setup (running tests, the spec-kit workflow), see
 | `0.4.0` | Notebook result-grid renderer, per-cluster notebook organization, ER diagram, snippets, report-problem | landed |
 | `0.5.0` | Cell editing (UPDATE/DELETE from the grid), saved-query history, full-featured Grid Editor (canvas grid + per-PG-type editors + bulk Apply + FK navigation + export) | landed |
 | `0.6.0` | Visual index / constraint editors, migration wizard, per-platform packaging (`scripts/package.mjs`) | landed |
-| `0.7.0` | Automated CI/CD via GitHub Actions on self-hosted runners — every PR gated by typecheck + lint + tests + build + audits + security scan; tag → Marketplace publish (stable + pre-release channels) + GitHub Release with per-platform VSIXs | landed |
-| `1.0.0` | First public Marketplace release; e2e test harness (`@vscode/test-electron` + testcontainers); performance budget enforcement | in progress |
+| `0.7.0` | Automated CI/CD via GitHub Actions — every PR gated by typecheck + lint + tests + build + audits + security scan; tag → Marketplace publish (stable + pre-release channels) + GitHub Release with per-platform VSIXs | landed |
+| **`1.0.0`** | **First public Marketplace release — `Irulast.cnpg4vscode` (six per-platform VSIXs).** | **landed (2026-05-17)** |
+| `1.1.0` | e2e test harness (`@vscode/test-electron` + testcontainers); performance budget enforcement (spec 001's blocked tasks) | planned |
 
-Releases are automated via GitHub Actions on self-hosted runners — see
-[`docs/release-process.md`](docs/release-process.md) for the maintainer
-runbook (bump → merge → push tag; the workflow handles the rest).
+Releases are automated via GitHub Actions on the standard
+GitHub-hosted runner pool — see
+[`docs/release-process.md`](docs/release-process.md) for the
+maintainer runbook (bump → merge → push tag; the workflow handles
+the rest).
 
 ## Security
 
