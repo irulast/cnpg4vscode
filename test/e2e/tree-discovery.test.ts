@@ -15,7 +15,7 @@ import * as vscode from "vscode";
 
 suite("US1: cluster discovery", () => {
   test("the CNPG view container and clusters view are registered", async () => {
-    const ext = vscode.extensions.getExtension("irulast.cnpg4vscode");
+    const ext = vscode.extensions.getExtension("Irulast.cnpg4vscode");
     assert.ok(ext, "extension should be installed in the test host");
     await ext!.activate();
     // Smoke check: refresh command resolves.
