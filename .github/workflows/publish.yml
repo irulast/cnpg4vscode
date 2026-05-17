@@ -1,20 +1,18 @@
 name: Publish
 
-# Spec 002 / T015 / US2. Tag-triggered Marketplace publish on
-# self-hosted runners. Channel is inferred from the tag's SemVer
-# suffix (stable when absent, pre-release when present). Build-then-
-# publish staging means all six VSIXs are produced and validated as
-# workflow artifacts BEFORE the first `vsce publish` invocation.
+# Spec 002 / T015 / US2. Tag-triggered Marketplace publish.
+# Channel is inferred from the tag (stable when bare SemVer,
+# pre-release when -pre.<N> suffix). Build-then-publish staging
+# means all six VSIXs are produced and validated as workflow
+# artifacts BEFORE the first `vsce publish` invocation.
 #
-# Runner pool: `mke-builds` (ARC Runner Scale Set). ARC kubernetes mode
-# requires `container:` on every job — node:22-bookworm provides Node
-# + apt for gh/git install. See ci.yml comment header for details.
+# Runner: ubuntu-latest (GitHub-hosted). See ci.yml comment header.
 
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'        # stable: v0.2.0
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'      # pre-release: v0.2.0-beta.1
+      - 'v[0-9]+.[0-9]+.[0-9]+'        # stable: v1.0.0
+      - 'v[0-9]+.[0-9]+.[0-9]+-pre.[0-9]+'  # pre-release: v1.0.0-pre.1
   workflow_dispatch:                    # maintainer re-trigger for the same tag
 
 # Serialise per-tag — partial-success state (FR-017a) is recoverable
@@ -26,25 +24,20 @@ concurrency:
 jobs:
   preflight:
     name: Preflight (validate tag; master-ancestry)
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     if: github.repository == 'irulast/cnpg4vscode' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     outputs:
       channel: ${{ steps.tag.outputs.channel }}
       version: ${{ steps.tag.outputs.version }}
     steps:
-      - name: Install system tooling
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # need full history for master-ancestry check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Tag must be reachable from master (FR-018)
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git fetch --no-tags origin master:refs/remotes/origin/master
           if ! git merge-base --is-ancestor "${{ github.sha }}" refs/remotes/origin/master; then
             echo "::error::Tag ${{ github.ref_name }} points at a commit not reachable from master."
@@ -55,7 +48,7 @@ jobs:
         run: |
           OUT=$(node scripts/ci/validate-tag.mjs "${{ github.ref_name }}")
           echo "$OUT"
-          # OUT looks like: channel=stable;version=0.2.0
+          # OUT looks like: channel=stable;version=1.0.0
           CHANNEL=$(echo "$OUT" | sed -n 's/^channel=\([^;]*\);.*/\1/p')
           VERSION=$(echo "$OUT" | sed -n 's/^.*;version=\(.*\)$/\1/p')
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
@@ -64,26 +57,12 @@ jobs:
   wait-ci:
     name: Wait for CI gate (30-min timeout)
     needs: preflight
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     steps:
-      - name: Install system tooling (gh)
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-            > /etc/apt/sources.list.d/github-cli.list
-          apt-get update
-          apt-get install -y --no-install-recommends gh
-          # Defang git's dubious-ownership check — see same step in
-          # preflight for the load-bearing rationale.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Poll for CI gate conclusion (FR-011)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,32 +75,16 @@ jobs:
   collision-check:
     name: Marketplace collision check (FR-013)
     needs: [preflight, wait-ci]
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     steps:
-      - name: Install system tooling
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates
-          # Defang git's dubious-ownership check — the container runs
-          # as root while the checkout dir is owned by the runner UID.
-          # actions/checkout sets safe.directory under the runner user's
-          # gitconfig, but later steps that run as root won't see that
-          # (gh + git both invoke from /root/.gitconfig). Setting it
-          # here in the root-shell install step is the load-bearing fix.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-      - name: pnpm store cache
-        uses: actions/cache@v4
+      - uses: pnpm/action-setup@v3
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Check Marketplace for existing version
         run: |
@@ -137,32 +100,16 @@ jobs:
   package:
     name: Package six per-platform VSIXs (FR-014)
     needs: [preflight, wait-ci, collision-check]
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     steps:
-      - name: Install system tooling
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates
-          # Defang git's dubious-ownership check — the container runs
-          # as root while the checkout dir is owned by the runner UID.
-          # actions/checkout sets safe.directory under the runner user's
-          # gitconfig, but later steps that run as root won't see that
-          # (gh + git both invoke from /root/.gitconfig). Setting it
-          # here in the root-shell install step is the load-bearing fix.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-      - name: pnpm store cache
-        uses: actions/cache@v4
+      - uses: pnpm/action-setup@v3
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Package per-platform VSIXs
@@ -180,9 +127,6 @@ jobs:
       - name: Move VSIXs into a flat artifact dir
         run: |
           mkdir -p vsix-bundle
-          # scripts/package.mjs writes to dist/vsix/. Workflow callers
-          # of older package.mjs revisions may have dropped them in
-          # ./ or dist/; cover all three locations.
           mv dist/vsix/*.vsix vsix-bundle/ 2>/dev/null || true
           mv dist/*.vsix vsix-bundle/ 2>/dev/null || true
           mv ./*.vsix vsix-bundle/ 2>/dev/null || true
@@ -201,32 +145,16 @@ jobs:
   publish:
     name: Publish to Marketplace (FR-014 + FR-017 + FR-017a)
     needs: [preflight, package]
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     steps:
-      - name: Install system tooling
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates
-          # Defang git's dubious-ownership check — the container runs
-          # as root while the checkout dir is owned by the runner UID.
-          # actions/checkout sets safe.directory under the runner user's
-          # gitconfig, but later steps that run as root won't see that
-          # (gh + git both invoke from /root/.gitconfig). Setting it
-          # here in the root-shell install step is the load-bearing fix.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-      - name: pnpm store cache
-        uses: actions/cache@v4
+      - uses: pnpm/action-setup@v3
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
@@ -252,30 +180,16 @@ jobs:
   release-create:
     name: Create GitHub Release with VSIX assets (FR-020 + FR-021 + FR-022)
     needs: [preflight, publish]
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     permissions:
       contents: write   # required for `gh release create` / `gh release upload`
     steps:
-      - name: Install system tooling (gh)
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-            > /etc/apt/sources.list.d/github-cli.list
-          apt-get update
-          apt-get install -y --no-install-recommends gh
-          # Defang git's dubious-ownership check — see same step in
-          # preflight for the load-bearing rationale.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # need full tag history for previous-tag lookup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: actions/download-artifact@v4
         with:
           name: vsix-bundle-${{ github.ref_name }}
@@ -285,7 +199,6 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           # The previous tag is the one immediately before $TAG in the
           # master history. If no previous tag exists (first release ever),
           # fall back to the root commit and let generate-release-notes

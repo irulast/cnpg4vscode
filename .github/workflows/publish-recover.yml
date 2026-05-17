@@ -3,15 +3,15 @@ name: Publish recover
 # Spec 002 / T016 / FR-017a. Manual recovery for partial-success
 # publish runs. The maintainer copies the `gh workflow run` line from
 # the failing publish.yml's summary and runs it here; this workflow
-# republishes ONLY the listed targets for the same tag, using either
-# the cached artifact bundle (if still within the 90-day retention) or
-# a fresh build.
+# republishes ONLY the listed targets for the same tag.
+#
+# Runner: ubuntu-latest (GitHub-hosted). See ci.yml comment header.
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to recover (e.g. v0.2.0 or v0.2.0-beta.1)"
+        description: "Tag to recover (e.g. v1.0.0 or v1.0.0-pre.1)"
         required: true
         type: string
       targets:
@@ -29,32 +29,24 @@ concurrency:
 jobs:
   preflight:
     name: Preflight (validate tag)
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     if: github.repository == 'irulast/cnpg4vscode'
     outputs:
       channel: ${{ steps.tag.outputs.channel }}
       version: ${{ steps.tag.outputs.version }}
       sha: ${{ steps.tagsha.outputs.sha }}
     steps:
-      - name: Install system tooling
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates
-          # Defang git's dubious-ownership check — see same step in
-          # publish.yml's preflight for the load-bearing rationale.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Resolve tag → SHA
         id: tagsha
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           if ! git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "::error::Tag ${TAG} does not exist in this repository."
             exit 1
@@ -79,30 +71,18 @@ jobs:
   recover:
     name: Republish failed targets
     needs: preflight
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     steps:
-      - name: Install system tooling
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates
-          # Defang git's dubious-ownership check — see same step in
-          # publish.yml's preflight for the load-bearing rationale.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.preflight.outputs.sha }}
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-      - name: pnpm store cache
-        uses: actions/cache@v4
+      - uses: pnpm/action-setup@v3
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Try to download the artifact bundle from the original publish
       # run (if still within retention). If it's gone, fall back to

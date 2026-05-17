@@ -2,15 +2,12 @@ name: CI Gate
 
 # CI gate per spec 002. Runs on every PR targeting master and every push
 # to master. Fork PRs use `pull_request` (not `pull_request_target`) so
-# secrets are unavailable to fork execution contexts by GitHub's design
-# (see contracts/workflow-triggers.md + research §5).
+# secrets are unavailable to fork execution contexts by GitHub's design.
 #
-# Runner pool: `mke-builds` (ARC Runner Scale Set name in
-# k8s-setup/infrastructure/mke/arc/). The scale-set name IS the label
-# in ARC's runner-scale-sets mode — NOT the standard `self-hosted, linux,
-# X64` triple. ARC kubernetes mode also requires every job to specify
-# `container:` so the workflow steps land in a child pod with a known
-# toolchain.
+# Runner: ubuntu-latest (GitHub-hosted). Originally targeted the
+# self-hosted ARC scale set `mke-builds`, but that set was scoped to
+# the private org; switched to hosted runners when the repo went
+# public so workflow runs work without ARC reconfiguration.
 
 on:
   pull_request:
@@ -26,28 +23,16 @@ concurrency:
 jobs:
   gate:
     name: Gate (actionlint + typecheck + lint + test + build + audits)
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm
+    runs-on: ubuntu-latest
     steps:
-      - name: Install system tooling (git, gh, ca-certs)
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates
-          # gh CLI from GitHub's apt repo
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-            > /etc/apt/sources.list.d/github-cli.list
-          apt-get update
-          apt-get install -y --no-install-recommends gh
-          git --version && gh --version
-          # Defang git's dubious-ownership check — the container runs
-          # as root while the checkout dir is owned by the runner UID.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - name: Install actionlint v1.7.7 + lint workflow YAML
         run: |
           set -eu
@@ -55,15 +40,6 @@ jobs:
             https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
           tar xzf /tmp/actionlint.tar.gz -C /usr/local/bin actionlint
           actionlint -color
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-      - name: pnpm store cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
@@ -93,9 +69,7 @@ jobs:
   summary:
     name: summary
     needs: gate
-    runs-on: mke-builds
-    container:
-      image: node:22-bookworm-slim
+    runs-on: ubuntu-latest
     steps:
       # Single zero-step job whose only purpose is to give branch
       # protection a stable check name ("CI Gate / summary") to require.
