@@ -66,6 +66,32 @@ describe("check-marketplace-version.mjs", () => {
     expect(r.stdout).toContain("collision=false");
   });
 
+  it("exits 0 when extension never published (vsce prints literal 'undefined')", () => {
+    // First-ever publish: `vsce show <publisher>.<ext> --json` prints
+    // the literal string "undefined\n" and exits 0. The script must
+    // treat that as "no collision possible" so the first publish can
+    // actually proceed.
+    const dir = mkdtempSync(join(tmpdir(), "check-mkt-first-"));
+    try {
+      const fakeVsce = "#!/usr/bin/env bash\necho undefined\nexit 0\n";
+      const fakeBin = join(dir, "vsce");
+      writeFileSync(fakeBin, fakeVsce);
+      chmodSync(fakeBin, 0o755);
+      const r = spawnSync(
+        "node",
+        [SCRIPT, "cnpg4vscode", "cnpg4vscode", "0.2.0", "stable"],
+        {
+          env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+          encoding: "utf8",
+        },
+      );
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("collision=false");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("exits 1 when (version, stable) already published", () => {
     const r = run("cnpg4vscode", "cnpg4vscode", "0.2.0", "stable", {
       mode: "ok",

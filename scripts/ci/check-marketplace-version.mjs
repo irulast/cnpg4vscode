@@ -50,9 +50,20 @@ if (result.error || result.status !== 0) {
   fatal(2, `vsce show failed: ${reason}`);
 }
 
+// `vsce show <ext> --json` for an extension that has NEVER been
+// published prints the literal "undefined\n" (or just blank stdout
+// on some vsce versions) and exits 0. Treat both cases as
+// "extension does not exist yet" → no collision possible.
+const stdoutTrimmed = (result.stdout ?? "").trim();
+if (stdoutTrimmed === "" || stdoutTrimmed === "undefined") {
+  process.stdout.write("collision=false\n");
+  process.stderr.write(`[${SCRIPT}] WARN: extension ${publisher}.${extension} not yet on the Marketplace; first publish coming\n`);
+  process.exit(0);
+}
+
 let parsed;
 try {
-  parsed = JSON.parse(result.stdout);
+  parsed = JSON.parse(stdoutTrimmed);
 } catch (err) {
   fatal(2, `vsce show returned non-JSON output: ${err.message}`);
 }
