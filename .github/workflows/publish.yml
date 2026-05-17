@@ -230,6 +230,10 @@ jobs:
         run: |
           # vsce is a devDependency — local bin dir on PATH.
           export PATH="$PWD/node_modules/.bin:$PATH"
+          echo "---preflight diagnostics---"
+          vsce --version
+          ls -la vsix-bundle/
+          echo "---publish-vsix.mjs running---"
           node scripts/ci/publish-vsix.mjs \
             --tag "${{ github.ref_name }}" \
             --channel "${{ needs.preflight.outputs.channel }}" \
