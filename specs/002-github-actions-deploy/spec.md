@@ -4,7 +4,7 @@
 
 **Created**: 2026-05-16
 
-**Status**: Implemented (2026-05-17) — 27 of 35 tasks complete. The remaining 8 are all manual / out-of-band: smoke-test PRs (T005, T018, T019, T020, T025, T031), branch protection configuration via `gh api` (T006), and the first real preview release (T035). These need a maintainer + the remote and are documented in [tasks.md](tasks.md) and [docs/release-process.md](../../docs/release-process.md). All workflow files, auxiliary scripts, and tests are landed and CI-gate-green.
+**Status**: **Implemented + validated end-to-end (2026-05-17)** — 28 of 35 tasks complete. SC-001 met: `Irulast.cnpg4vscode v1.0.0` shipped to the VS Code Marketplace stable channel via the full publish.yml pipeline (preflight → wait-ci → collision-check → package → publish → release-create); GitHub Release v1.0.0 carries all 6 per-platform VSIXs + auto-generated changelog. v0.7.0 also lives on the pre-release channel as the pipeline-debug test bed. Pipeline now runs on GitHub-hosted ubuntu-latest (see Clarifications 2026-05-17 post-impl revision; FR-004 and SC-008 reversed). Remaining 7 unchecked items are manual smoke-test PRs documented in [tasks.md](tasks.md) — none are blocking the spec's primary outcome.
 
 **Input**: User description: "We've implemented everything in the current spec that we can without test-containers and infrastructure for them. I think this current spec is complete, just needs to be updated to show so. Let's make a new smaller spec for setting up GH actions to manage this deployment from the master branch. We should use our own runners (see /home/adam/WebstormProjects/k8s-setup). The PAT for the vscode marketplace is stored as a secret on the repo."
 
