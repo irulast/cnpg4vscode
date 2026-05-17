@@ -116,12 +116,19 @@ jobs:
           path: vsix-bundle/
       - name: Build artifacts if bundle missing
         if: steps.download.outcome != 'success'
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
         run: |
           echo "::notice::Original artifact bundle not found; rebuilding for the requested targets."
           pnpm build
           IFS=',' read -ra TARGETS <<< "${{ inputs.targets }}"
+          PRE_FLAG=""
+          if [[ "$CHANNEL" == "pre-release" ]]; then
+            PRE_FLAG="--pre-release"
+          fi
           for t in "${TARGETS[@]}"; do
-            pnpm package -- --target "$t"
+            # shellcheck disable=SC2086
+            pnpm package -- --target "$t" $PRE_FLAG
           done
           mkdir -p vsix-bundle
           mv dist/vsix/*.vsix vsix-bundle/ 2>/dev/null || true

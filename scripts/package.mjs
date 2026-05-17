@@ -44,10 +44,14 @@ const onlyTarget = idx > 0 && argv[idx + 1] ? argv[idx + 1] : null;
 const targets = onlyTarget ? [onlyTarget] : TARGETS;
 
 // `vsce publish` rejects a VSIX that wasn't packaged with the matching
-// pre-release flag. Detect from the version string (SemVer suffix) so
-// the packager is self-describing — no need for the CI workflow to
-// pass an extra flag for pre-release tags.
-const isPreRelease = /-/.test(VERSION);
+// `--pre-release` flag. The flag bakes pre-release metadata INTO the
+// VSIX, so package and publish must agree.
+//
+// The Marketplace doesn't accept SemVer pre-release suffixes in the
+// version field — VERSION is always plain `x.y.z`, so we can't infer
+// channel from it. Instead the publish workflow passes `--pre-release`
+// to this script when the tag's suffix indicated pre-release intent.
+const isPreRelease = argv.includes("--pre-release");
 
 if (!existsSync("dist/extension.js")) {
   console.error("[package] dist/extension.js not found. Run `pnpm build` first.");

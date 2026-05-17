@@ -112,35 +112,62 @@ re-deriving.
 
 ## §3 — `vsce publish` pre-release channel mechanics
 
-**Decision**: Pre-release vs stable is purely a `--pre-release` flag on
-`vsce publish`. The flag composes with `--target <triple>` and
-`--packagePath <vsix>`. Concrete invocations:
+**Critical correction over the initial design (2026-05-17 first publish
+surfaced this)**: VS Code Marketplace REJECTS SemVer pre-release
+suffixes in the version field. The error is literal:
+`The VS Marketplace doesn't support prerelease versions: '0.7.0-preview.4'`.
+
+The actual model:
+
+- `package.json#version` is always plain `x.y.z` — no `-pre`,
+  no `-beta`, no `-rc`. The Marketplace assigns a single canonical
+  version per upload.
+- The pre-release CHANNEL is signalled ONLY via the `--pre-release`
+  flag, passed at BOTH `vsce package` AND `vsce publish`. The flag
+  bakes pre-release metadata INTO the VSIX file itself; publishing
+  a non-pre-release VSIX with `--pre-release` fails with
+  `Cannot use '--pre-release' flag with a package that was not
+  packaged as pre-release`.
+- The same `x.y.z` can exist on BOTH channels simultaneously
+  (different `preRelease` flag in the VSIX metadata). Multiple
+  pre-release iterations of the same `x.y.z` require bumping
+  patch — the Marketplace rejects a second pre-release upload of
+  the same version on the same channel.
+
+**This spec's tag convention**:
+
+- `v<X>.<Y>.<Z>` — publishes `X.Y.Z` to the stable channel.
+- `v<X>.<Y>.<Z>-pre.<N>` — publishes `X.Y.Z` to the pre-release
+  channel. The `-pre.<N>` is a maintainer-side iteration counter
+  that's STRIPPED before the version goes anywhere near the
+  Marketplace.
+
+Concrete invocations (per platform):
 
 ```bash
-# Stable channel, Linux x64:
-vsce publish --no-dependencies --target linux-x64 --packagePath cnpg4vscode-linux-x64-0.2.0.vsix
+# Stable channel, Linux x64 (tag v0.7.0):
+vsce package --target linux-x64 --no-dependencies -o cnpg4vscode-linux-x64-0.7.0.vsix
+vsce publish --packagePath cnpg4vscode-linux-x64-0.7.0.vsix --no-dependencies
 
-# Pre-release channel, macOS arm64:
-vsce publish --no-dependencies --pre-release --target darwin-arm64 --packagePath cnpg4vscode-darwin-arm64-0.2.0-beta.1.vsix
+# Pre-release channel, macOS arm64 (tag v0.7.0-pre.1, version still 0.7.0):
+vsce package --pre-release --target darwin-arm64 --no-dependencies -o cnpg4vscode-darwin-arm64-0.7.0.vsix
+vsce publish --pre-release --packagePath cnpg4vscode-darwin-arm64-0.7.0.vsix --no-dependencies
 ```
+
+Note: do NOT pass `--target <triple>` to `vsce publish` when also
+passing `--packagePath` — vsce rejects the combination with `Both
+options not supported simultaneously: 'packagePath' and 'target'`.
+The target is already baked into the VSIX at package time.
 
 The publisher's PAT is passed via the `VSCE_PAT` env var (built-in to
 vsce since 2.15.x); no `--pat` argv flag means `ps` cannot observe it
 and GitHub Actions' secret masking covers it natively.
 
-**Edge case — pre-release VSIX must have its own version**: VS Code's
-Marketplace treats `0.2.0-beta.1` as a separate version from `0.2.0`
-ONLY when the publisher uses pre-release semantics natively. `vsce
-publish --pre-release` injects the right metadata; the VSIX itself
-must have `version: "0.2.0-beta.1"` in its packaged `package.json`.
-Implementation: `validate-tag.mjs` and the pre-package step both
-ensure `package.json#version` matches the tag's SemVer string
-(suffix included).
-
-**Verification**: `vsce show Irulast.cnpg4vscode --json` returns
-all versions with their `preview` and `preRelease` flags so the
-collision check (FR-013) can compare on the
-`(version, preRelease)` tuple.
+**Verification**: `vsce show <publisher>.<extension> --json` returns
+all versions. The pre-release flag is NOT a top-level field; it lives
+inside `version.properties[]` keyed by
+`Microsoft.VisualStudio.Code.PreRelease` with string value
+`"true"`/`"false"`. The collision check (FR-013) reads from there.
 
 **Alternatives considered**: shipping pre-releases via a SEPARATE
 Marketplace listing (e.g. `cnpg4vscode-pre`). Rejected — splits the

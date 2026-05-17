@@ -166,7 +166,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Package per-platform VSIXs
-        run: pnpm package
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+        run: |
+          # The --pre-release flag bakes pre-release metadata into the
+          # VSIX itself. vsce publish later refuses to mix-and-match,
+          # so package and publish must agree on the channel.
+          if [[ "$CHANNEL" == "pre-release" ]]; then
+            pnpm package -- --pre-release
+          else
+            pnpm package
+          fi
       - name: Move VSIXs into a flat artifact dir
         run: |
           mkdir -p vsix-bundle
