@@ -153,7 +153,19 @@ function snapshotCanvasTheme(): Partial<Theme> {
   const v = (name: string, fallback: string): string =>
     cs.getPropertyValue(name).trim() || fallback;
   const fontFamily = v("--vscode-font-family", "system-ui, sans-serif");
-  const fontSize = v("--vscode-editor-font-size", "13") + "px";
+  // VS Code's editor.fontSize defaults to 13 which is small for a data
+  // grid where you scan across many columns. DB IDEs typically use
+  // 14-15px. Floor at 14 so the user can still increase via VS Code
+  // settings but won't get an uncomfortably tiny default.
+  const baseSize = Number(v("--vscode-editor-font-size", "13")) || 13;
+  const gridFontSize = `${Math.max(baseSize, 14)}px`;
+  // Borders: `--vscode-panel-border` is often very subtle (or invisible
+  // on some themes). Fall back to a slightly stronger separator color
+  // via `--vscode-editorIndentGuide-background` which exists on every
+  // built-in theme and gives a visible gridline.
+  const border = v("--vscode-tree-tableColumnsBorder",
+    v("--vscode-editorIndentGuide-background",
+      v("--vscode-panel-border", "#3d3d3d")));
   return {
     bgCell: v("--vscode-editor-background", "#1e1e1e"),
     bgCellMedium: v("--vscode-editor-background", "#1e1e1e"),
@@ -167,12 +179,12 @@ function snapshotCanvasTheme(): Partial<Theme> {
     textLight: v("--vscode-descriptionForeground", "#8c8c8c"),
     accentColor: v("--vscode-focusBorder", "#007fd4"),
     accentLight: v("--vscode-editor-selectionBackground", "#264f78"),
-    borderColor: v("--vscode-panel-border", "#2b2b2b"),
-    horizontalBorderColor: v("--vscode-panel-border", "#2b2b2b"),
-    drilldownBorder: v("--vscode-panel-border", "#2b2b2b"),
+    borderColor: border,
+    horizontalBorderColor: border,
+    drilldownBorder: border,
     linkColor: v("--vscode-textLink-foreground", "#3794ff"),
-    headerFontStyle: `600 ${fontSize}`,
-    baseFontStyle: fontSize,
+    headerFontStyle: `600 ${gridFontSize}`,
+    baseFontStyle: gridFontSize,
     fontFamily,
   };
 }
@@ -205,6 +217,17 @@ function App(): JSX.Element {
 
   // Layout primitives — column widths persist across reloads.
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  // Sort + filter state — drive both server-side via loadPage AND the
+  // persisted layout via layoutChanged.
+  const [sort, setSort] = useState<Array<{ column: string; dir: "asc" | "desc" }>>([]);
+  const [filters, setFilters] = useState<
+    Array<{ column: string; op: string; value?: string }>
+  >([]);
+  // Built-in glide-data-grid search (Ctrl+F).
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  // Per-column filter modal — opened from the header menu.
+  const [filterModal, setFilterModal] = useState<ColumnLike | null>(null);
 
   // Receive messages from the host. Every message is also logged to
   // the webview console — open "Developer: Open Webview Developer
@@ -220,6 +243,8 @@ function App(): JSX.Element {
         if (p.persistedState?.columnWidths) {
           setColumnWidths({ ...p.persistedState.columnWidths });
         }
+        if (p.persistedState?.sort) setSort([...p.persistedState.sort]);
+        if (p.persistedState?.filters) setFilters([...p.persistedState.filters]);
       } else if (msg.type === "page") {
         setPage(msg.payload as PagePayload);
         setLoadError(null);
@@ -284,16 +309,24 @@ function App(): JSX.Element {
     return (): void => window.removeEventListener("click", onClick);
   }, [contextMenu]);
 
-  // Build glide-data-grid columns from the descriptor + persisted widths.
+  // Build glide-data-grid columns from the descriptor + persisted
+  // widths + sort/filter indicators. Title gets a glyph for current
+  // sort direction; hasMenu enables the column-header menu (→ filter).
   const columns: GridColumn[] = useMemo(() => {
     if (!init) return [];
-    return init.descriptor.columns.map((c) => ({
-      id: c.name,
-      title: c.name,
-      width: columnWidths[c.name] ?? 160,
-      hasMenu: false,
-    }));
-  }, [init, columnWidths]);
+    return init.descriptor.columns.map((c) => {
+      const sortEntry = sort.find((s) => s.column === c.name);
+      const sortGlyph = sortEntry ? (sortEntry.dir === "asc" ? "  ↑" : "  ↓") : "";
+      const filterGlyph = filters.some((f) => f.column === c.name) ? "  🔎" : "";
+      const pkGlyph = c.isPk ? "🔑 " : "";
+      return {
+        id: c.name,
+        title: `${pkGlyph}${c.name}${sortGlyph}${filterGlyph}`,
+        width: columnWidths[c.name] ?? 160,
+        hasMenu: true,
+      };
+    });
+  }, [init, columnWidths, sort, filters]);
 
   // Pull cell content for the visible window. The grid asks for one
   // cell at a time during paint.
@@ -464,33 +497,131 @@ function App(): JSX.Element {
     setContextMenu(null);
   }, [contextMenu]);
 
+  /** Post the full current layout snapshot to the host. */
+  const postLayoutChanged = useCallback(
+    (overrides: {
+      columnWidths?: Record<string, number>;
+      sort?: Array<{ column: string; dir: "asc" | "desc" }>;
+      filters?: Array<{ column: string; op: string; value?: string }>;
+    } = {}) => {
+      if (!init) return;
+      vscode.postMessage({
+        type: "layoutChanged",
+        payload: {
+          state: {
+            columnOrder:
+              init.persistedState?.columnOrder ?? init.descriptor.columns.map((c) => c.name),
+            hiddenColumns: init.persistedState?.hiddenColumns ?? [],
+            columnWidths: overrides.columnWidths ?? columnWidths,
+            sort: overrides.sort ?? sort,
+            filters: overrides.filters ?? filters,
+            frozenColumnCount: init.persistedState?.frozenColumnCount ?? 0,
+            scrollTop: init.persistedState?.scrollTop ?? 0,
+            lastOpenedAt: Date.now(),
+          },
+        },
+      });
+    },
+    [init, columnWidths, sort, filters],
+  );
+
+  /** Post a page reload with the current sort/filter snapshot. */
+  const reloadPage = useCallback(
+    (overrides: {
+      sort?: Array<{ column: string; dir: "asc" | "desc" }>;
+      filters?: Array<{ column: string; op: string; value?: string }>;
+    } = {}) => {
+      vscode.postMessage({
+        type: "loadPage",
+        payload: {
+          offset: 0,
+          limit: 1000,
+          sort: overrides.sort ?? sort,
+          filters: overrides.filters ?? filters,
+        },
+      });
+    },
+    [sort, filters],
+  );
+
   const onColumnResize = useCallback(
     (col: GridColumn, newSize: number) => {
       const name = col.id;
-      if (!name || !init) return;
+      if (!name) return;
       setColumnWidths((prev) => {
         const next = { ...prev, [name]: newSize };
-        // Persist via host.
-        vscode.postMessage({
-          type: "layoutChanged",
-          payload: {
-            state: {
-              columnOrder: init.persistedState?.columnOrder ?? init.descriptor.columns.map((c) => c.name),
-              hiddenColumns: init.persistedState?.hiddenColumns ?? [],
-              columnWidths: next,
-              sort: init.persistedState?.sort ?? [],
-              filters: init.persistedState?.filters ?? [],
-              frozenColumnCount: init.persistedState?.frozenColumnCount ?? 0,
-              scrollTop: init.persistedState?.scrollTop ?? 0,
-              lastOpenedAt: Date.now(),
-            },
-          },
-        });
+        postLayoutChanged({ columnWidths: next });
         return next;
       });
     },
+    [postLayoutChanged],
+  );
+
+  /**
+   * Click a column header to toggle sort: none → asc → desc → none.
+   * Multi-column sort is keyed by precedence (most-recent first); for
+   * v1 we keep it single-column to match the cell-edit grid UX users
+   * expect. Shift-click for multi-column can land later.
+   */
+  const onHeaderClicked = useCallback(
+    (colIdx: number) => {
+      if (!init) return;
+      const col = init.descriptor.columns[colIdx];
+      if (!col) return;
+      const existing = sort.find((s) => s.column === col.name);
+      let newSort: Array<{ column: string; dir: "asc" | "desc" }>;
+      if (!existing) {
+        newSort = [{ column: col.name, dir: "asc" }];
+      } else if (existing.dir === "asc") {
+        newSort = [{ column: col.name, dir: "desc" }];
+      } else {
+        newSort = []; // cycle off
+      }
+      setSort(newSort);
+      postLayoutChanged({ sort: newSort });
+      reloadPage({ sort: newSort });
+    },
+    [init, sort, postLayoutChanged, reloadPage],
+  );
+
+  /** Click the column header's menu icon to open the per-column filter modal. */
+  const onHeaderMenuClick = useCallback(
+    (colIdx: number) => {
+      if (!init) return;
+      const col = init.descriptor.columns[colIdx];
+      if (!col) return;
+      setFilterModal(col);
+    },
     [init],
   );
+
+  const onAddFilter = useCallback(
+    (column: string, op: string, value: string | undefined) => {
+      const newFilters = [
+        ...filters.filter((f) => f.column !== column),
+        value === undefined ? { column, op } : { column, op, value },
+      ];
+      setFilters(newFilters);
+      setFilterModal(null);
+      postLayoutChanged({ filters: newFilters });
+      reloadPage({ filters: newFilters });
+    },
+    [filters, postLayoutChanged, reloadPage],
+  );
+
+  const onRemoveFilter = useCallback(
+    (column: string) => {
+      const newFilters = filters.filter((f) => f.column !== column);
+      setFilters(newFilters);
+      postLayoutChanged({ filters: newFilters });
+      reloadPage({ filters: newFilters });
+    },
+    [filters, postLayoutChanged, reloadPage],
+  );
+
+  const onOpenSearch = useCallback(() => {
+    setShowSearch(true);
+  }, []);
 
   if (!init) {
     return (
@@ -537,9 +668,12 @@ function App(): JSX.Element {
       <Toolbar
         dirtyCount={dirtyCount}
         readonlyReason={readonlyReason}
+        filters={filters}
         onApply={onApply}
         onRevert={onRevert}
         onRefresh={onRefresh}
+        onSearch={onOpenSearch}
+        onRemoveFilter={onRemoveFilter}
       />
       <SizedDataEditor
         editorRef={editorRef}
@@ -549,7 +683,16 @@ function App(): JSX.Element {
         {...(isReadonly ? {} : { onCellEdited })}
         onColumnResize={onColumnResize}
         onCellContextMenu={onCellContextMenu}
+        onHeaderClicked={onHeaderClicked}
+        onHeaderMenuClick={onHeaderMenuClick}
         theme={theme}
+        showSearch={showSearch}
+        searchValue={searchValue}
+        onSearchValueChange={setSearchValue}
+        onSearchClose={() => {
+          setShowSearch(false);
+          setSearchValue("");
+        }}
         onSizeChanged={setGridSize}
       >
         {loadError !== null ? (
@@ -611,6 +754,19 @@ function App(): JSX.Element {
           onClose={() => setContextMenu(null)}
         />
       ) : null}
+      {filterModal ? (
+        <FilterModal
+          column={filterModal}
+          currentOp={filters.find((f) => f.column === filterModal.name)?.op}
+          currentValue={filters.find((f) => f.column === filterModal.name)?.value}
+          onApply={onAddFilter}
+          onClear={() => {
+            onRemoveFilter(filterModal.name);
+            setFilterModal(null);
+          }}
+          onCancel={() => setFilterModal(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -631,6 +787,12 @@ function SizedDataEditor({
   onCellEdited,
   onColumnResize,
   onCellContextMenu,
+  onHeaderClicked,
+  onHeaderMenuClick,
+  showSearch,
+  searchValue,
+  onSearchValueChange,
+  onSearchClose,
   theme,
   onSizeChanged,
   children,
@@ -645,6 +807,12 @@ function SizedDataEditor({
     cell: Item,
     e: { localEventX: number; localEventY: number; preventDefault: () => void },
   ) => void;
+  onHeaderClicked: (colIdx: number) => void;
+  onHeaderMenuClick: (colIdx: number) => void;
+  showSearch: boolean;
+  searchValue: string;
+  onSearchValueChange: (v: string) => void;
+  onSearchClose: () => void;
   theme: Partial<Theme>;
   onSizeChanged: (size: { width: number; height: number }) => void;
   children?: React.ReactNode;
@@ -706,10 +874,27 @@ function SizedDataEditor({
         {...(onCellEdited ? { onCellEdited } : {})}
         onColumnResize={onColumnResize}
         onCellContextMenu={onCellContextMenu}
+        onHeaderClicked={onHeaderClicked}
+        onHeaderMenuClick={onHeaderMenuClick}
         theme={theme}
         smoothScrollX
         smoothScrollY
         rowMarkers="number"
+        // Slightly taller than glide's default 34px so a 14px font has
+        // visual breathing room. Header gets a little extra so the
+        // sort/filter glyphs aren't crammed.
+        rowHeight={32}
+        headerHeight={36}
+        // Built-in client-side search. Triggered by Ctrl+F or the
+        // toolbar Search button.
+        showSearch={showSearch}
+        searchValue={searchValue}
+        onSearchValueChange={onSearchValueChange}
+        onSearchClose={onSearchClose}
+        // Always-show editable selection ring + clearer focused-cell
+        // outline so the user can tell which cell is selected.
+        drawFocusRing
+        // Pixel dims (fallback if measurement still hasn't fired).
         width={size.width || 800}
         height={size.height || 400}
       />
@@ -797,16 +982,22 @@ function Header({
 function Toolbar({
   dirtyCount,
   readonlyReason,
+  filters,
   onApply,
   onRevert,
   onRefresh,
+  onSearch,
+  onRemoveFilter,
 }: {
   dirtyCount: number;
   /** Null when fully editable; otherwise the reason editing is unavailable. */
   readonlyReason: string | null;
+  filters: Array<{ column: string; op: string; value?: string }>;
   onApply: () => void;
   onRevert: () => void;
   onRefresh: () => void;
+  onSearch: () => void;
+  onRemoveFilter: (column: string) => void;
 }): JSX.Element {
   const readonly = readonlyReason !== null;
   return (
@@ -818,6 +1009,7 @@ function Toolbar({
         alignItems: "center",
         gap: 8,
         background: "var(--vscode-editor-background)",
+        flexWrap: "wrap",
       }}
     >
       <button
@@ -833,6 +1025,31 @@ function Toolbar({
       <button onClick={onRefresh} style={btnStyle(true)}>
         Refresh
       </button>
+      <button onClick={onSearch} style={btnStyle(true)} title="Search (Ctrl+F)">
+        🔍 Search
+      </button>
+      {filters.length > 0 ? (
+        <>
+          <span style={{ opacity: 0.6, fontSize: "0.85em", marginLeft: 8 }}>Filters:</span>
+          {filters.map((f) => (
+            <button
+              key={f.column}
+              onClick={() => onRemoveFilter(f.column)}
+              style={{
+                ...btnStyle(true),
+                fontSize: "0.85em",
+                background: "var(--vscode-badge-background)",
+                color: "var(--vscode-badge-foreground)",
+              }}
+              title="Click to remove filter"
+            >
+              {f.column} {f.op}{" "}
+              {f.value !== undefined ? `'${f.value}'` : ""}
+              <span style={{ marginLeft: 6, opacity: 0.7 }}>×</span>
+            </button>
+          ))}
+        </>
+      ) : null}
       {readonlyReason !== null ? (
         <span style={{ marginLeft: "auto", opacity: 0.6, fontSize: "0.85em" }}>
           {readonlyReason}
@@ -1069,6 +1286,112 @@ function ErrorBanner({
             <code style={{ opacity: 0.7 }}>{rowKey}</code>: {reason}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function FilterModal({
+  column,
+  currentOp,
+  currentValue,
+  onApply,
+  onClear,
+  onCancel,
+}: {
+  column: ColumnLike;
+  currentOp: string | undefined;
+  currentValue: string | undefined;
+  onApply: (column: string, op: string, value: string | undefined) => void;
+  onClear: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const [op, setOp] = useState<string>(currentOp ?? "eq");
+  const [value, setValue] = useState<string>(currentValue ?? "");
+  const needsValue = op !== "is_null" && op !== "is_not_null";
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          minWidth: 360,
+          padding: 16,
+          background: "var(--vscode-editor-background)",
+          color: "var(--vscode-foreground)",
+          border: "1px solid var(--vscode-panel-border)",
+          borderRadius: 4,
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>
+          Filter <code>{column.name}</code>
+        </h3>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <select
+            value={op}
+            onChange={(e) => setOp(e.target.value)}
+            style={{
+              padding: "4px 6px",
+              background: "var(--vscode-input-background)",
+              color: "var(--vscode-input-foreground)",
+              border: "1px solid var(--vscode-input-border, transparent)",
+            }}
+          >
+            <option value="eq">= (equals)</option>
+            <option value="ne">≠ (not equal)</option>
+            <option value="lt">&lt;</option>
+            <option value="le">≤</option>
+            <option value="gt">&gt;</option>
+            <option value="ge">≥</option>
+            <option value="like">LIKE (use % wildcard)</option>
+            <option value="ilike">ILIKE (case-insensitive LIKE)</option>
+            <option value="is_null">IS NULL</option>
+            <option value="is_not_null">IS NOT NULL</option>
+          </select>
+          {needsValue ? (
+            <input
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onApply(column.name, op, value);
+                if (e.key === "Escape") onCancel();
+              }}
+              placeholder={`value for ${column.pgType}`}
+              style={{
+                flex: 1,
+                padding: "4px 6px",
+                background: "var(--vscode-input-background)",
+                color: "var(--vscode-input-foreground)",
+                border: "1px solid var(--vscode-input-border, transparent)",
+              }}
+            />
+          ) : null}
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} style={btnStyle(true)}>Cancel</button>
+          {currentOp ? (
+            <button onClick={onClear} style={btnStyle(true)}>
+              Clear filter
+            </button>
+          ) : null}
+          <button
+            onClick={() => onApply(column.name, op, needsValue ? value : undefined)}
+            style={btnStyle(true)}
+          >
+            Apply
+          </button>
+        </div>
       </div>
     </div>
   );
