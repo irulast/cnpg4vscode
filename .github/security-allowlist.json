@@ -22,5 +22,24 @@
     "for the scan-advisories.mjs contract."
   ],
   "version": 1,
-  "allowed": []
+  "allowed": [
+    {
+      "advisoryId": 1102423,
+      "justification": "jsonpath-plus RCE — transitive via @kubernetes/client-node>request. JSONPath in this codepath only ever consumes responses from the user's OWN trusted Kubernetes API server (cluster discovery + Secret reads), never attacker-controlled JSON. Out-of-process exploitation surface = none. Upstream fix gated on @kubernetes/client-node major upgrade (0.21 -> 1.x); tracked as a follow-up after the public Marketplace release ships.",
+      "reviewedBy": "aweigold",
+      "reviewedAt": "2026-05-17"
+    },
+    {
+      "advisoryId": 1102895,
+      "justification": "jsonpath-plus RCE (second CVE for the same library) — same justification as advisory 1102423; same upstream fix path.",
+      "reviewedBy": "aweigold",
+      "reviewedAt": "2026-05-17"
+    },
+    {
+      "advisoryId": 1109540,
+      "justification": "form-data unsafe boundary RNG — transitive via @kubernetes/client-node>request. Relevant only for multipart/form-data uploads, which the extension does not perform (k8s API calls are all JSON via the typed client; SPDY port-forward upgrade negotiation does not use multipart). Same upstream fix path as the jsonpath-plus advisories.",
+      "reviewedBy": "aweigold",
+      "reviewedAt": "2026-05-17"
+    }
+  ]
 }
