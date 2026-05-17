@@ -90,7 +90,7 @@ the workflow doing work).
 
 5. **Verify the listing**:
 
-   - Browse to https://marketplace.visualstudio.com/items?itemName=cnpg4vscode.cnpg4vscode
+   - Browse to https://marketplace.visualstudio.com/items?itemName=irulast.cnpg4vscode
    - Version field should show `0.2.0`.
    - The release at https://github.com/irulast/cnpg4vscode/releases/tag/v0.2.0
      should have six VSIX assets and an auto-generated changelog.
@@ -118,7 +118,7 @@ To verify the channel split:
 
 ```bash
 # Authenticated anonymous query — no PAT needed
-npx @vscode/vsce show cnpg4vscode.cnpg4vscode --json | jq '.versions[]
+npx @vscode/vsce show irulast.cnpg4vscode --json | jq '.versions[]
   | {version, preRelease, lastUpdated}'
 # Look for the new version with `"preRelease": true`.
 ```

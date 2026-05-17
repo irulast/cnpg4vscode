@@ -14,7 +14,7 @@ re-deriving the contract, and so the audit checklist (`quickstart.md`
 | **Secret name** | `VSCE_PAT` (exact case) |
 | **Scope** | Repository-level (NOT environment-scoped, NOT organisation-level) |
 | **Format** | Azure DevOps Personal Access Token, 52 characters, base32-ish |
-| **Granted to** | The publisher account that owns the `cnpg4vscode` Marketplace listing |
+| **Granted to** | The `irulast` publisher account that owns the `cnpg4vscode` Marketplace listing |
 | **AZ DevOps scope** | `Marketplace → Manage` (and only that) |
 | **Lifecycle** | Created by maintainer in Azure DevOps; rotated quarterly per runbook |
 | **Workflow exposure** | ONLY `publish.yml` and `publish-recover.yml`, ONLY in the per-step `env:` of the publish step |

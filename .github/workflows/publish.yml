@@ -130,7 +130,7 @@ jobs:
           # binary name, so PATH must include the local bin dir.
           export PATH="$PWD/node_modules/.bin:$PATH"
           node scripts/ci/check-marketplace-version.mjs \
-            cnpg4vscode cnpg4vscode \
+            irulast cnpg4vscode \
             "${{ needs.preflight.outputs.version }}" \
             "${{ needs.preflight.outputs.channel }}"
 

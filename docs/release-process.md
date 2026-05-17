@@ -90,7 +90,7 @@ workflow doing work).
 
 5. **Verify the listing**:
 
-   - Browse to <https://marketplace.visualstudio.com/items?itemName=cnpg4vscode.cnpg4vscode>.
+   - Browse to <https://marketplace.visualstudio.com/items?itemName=irulast.cnpg4vscode>.
    - Version field should show `0.2.0`.
    - The Release at
      <https://github.com/irulast/cnpg4vscode/releases/tag/v0.2.0>
@@ -116,7 +116,7 @@ won't see the update; pre-release-channel-opt-in users will.
 To verify the channel split:
 
 ```bash
-npx @vscode/vsce show cnpg4vscode.cnpg4vscode --json \
+npx @vscode/vsce show irulast.cnpg4vscode --json \
   | jq '.versions[] | {version, preRelease, lastUpdated}'
 # Look for the new version with "preRelease": true.
 ```
