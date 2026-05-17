@@ -166,7 +166,7 @@ included for `postgres` and `sql` languages.
 **From the Marketplace** (recommended once a release is published):
 
 ```sh
-code --install-extension irulast.cnpg4vscode
+code --install-extension Irulast.cnpg4vscode
 ```
 
 Or search "CloudNativePG" in the **Extensions** view inside VS Code.
