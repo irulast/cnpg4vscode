@@ -80,6 +80,9 @@ jobs:
             > /etc/apt/sources.list.d/github-cli.list
           apt-get update
           apt-get install -y --no-install-recommends gh
+          # Defang git's dubious-ownership check — see same step in
+          # preflight for the load-bearing rationale.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
       - name: Poll for CI gate conclusion (FR-011)
         env:
@@ -102,6 +105,13 @@ jobs:
           set -eu
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
+          # Defang git's dubious-ownership check — the container runs
+          # as root while the checkout dir is owned by the runner UID.
+          # actions/checkout sets safe.directory under the runner user's
+          # gitconfig, but later steps that run as root won't see that
+          # (gh + git both invoke from /root/.gitconfig). Setting it
+          # here in the root-shell install step is the load-bearing fix.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
       - name: Install pnpm
         run: npm install -g pnpm@10
@@ -132,6 +142,13 @@ jobs:
           set -eu
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
+          # Defang git's dubious-ownership check — the container runs
+          # as root while the checkout dir is owned by the runner UID.
+          # actions/checkout sets safe.directory under the runner user's
+          # gitconfig, but later steps that run as root won't see that
+          # (gh + git both invoke from /root/.gitconfig). Setting it
+          # here in the root-shell install step is the load-bearing fix.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
       - name: Install pnpm
         run: npm install -g pnpm@10
@@ -170,6 +187,13 @@ jobs:
           set -eu
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
+          # Defang git's dubious-ownership check — the container runs
+          # as root while the checkout dir is owned by the runner UID.
+          # actions/checkout sets safe.directory under the runner user's
+          # gitconfig, but later steps that run as root won't see that
+          # (gh + git both invoke from /root/.gitconfig). Setting it
+          # here in the root-shell install step is the load-bearing fix.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
       - name: Install pnpm
         run: npm install -g pnpm@10
@@ -217,6 +241,9 @@ jobs:
             > /etc/apt/sources.list.d/github-cli.list
           apt-get update
           apt-get install -y --no-install-recommends gh
+          # Defang git's dubious-ownership check — see same step in
+          # preflight for the load-bearing rationale.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # need full tag history for previous-tag lookup

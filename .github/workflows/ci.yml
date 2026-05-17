@@ -44,6 +44,9 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends gh
           git --version && gh --version
+          # Defang git's dubious-ownership check — the container runs
+          # as root while the checkout dir is owned by the runner UID.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
       - name: Install actionlint v1.7.7 + lint workflow YAML
         run: |

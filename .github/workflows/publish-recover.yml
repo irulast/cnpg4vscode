@@ -43,6 +43,9 @@ jobs:
           set -eu
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
+          # Defang git's dubious-ownership check — see same step in
+          # publish.yml's preflight for the load-bearing rationale.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -85,6 +88,9 @@ jobs:
           set -eu
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
+          # Defang git's dubious-ownership check — see same step in
+          # publish.yml's preflight for the load-bearing rationale.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.preflight.outputs.sha }}

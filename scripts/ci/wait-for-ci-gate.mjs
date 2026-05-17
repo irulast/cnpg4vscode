@@ -76,18 +76,22 @@ function parseArgs(argv) {
 }
 
 function ghRunList(sha, workflow) {
-  const result = spawnSync(
-    "gh",
-    [
-      "run", "list",
-      "--commit", sha,
-      "--workflow", workflow,
-      "--event", "push",
-      "--json", "conclusion,status,databaseId,url",
-      "--limit", "10",
-    ],
-    { encoding: "utf8" },
-  );
+  // `gh` autodetects the repo from git, which can fail in container
+  // CI when git refuses on the "dubious ownership" check. Pass --repo
+  // explicitly when GITHUB_REPOSITORY is set (it always is on GitHub
+  // Actions) so we don't depend on git resolution at all.
+  const args = [
+    "run", "list",
+    "--commit", sha,
+    "--workflow", workflow,
+    "--event", "push",
+    "--json", "conclusion,status,databaseId,url",
+    "--limit", "10",
+  ];
+  if (process.env.GITHUB_REPOSITORY) {
+    args.push("--repo", process.env.GITHUB_REPOSITORY);
+  }
+  const result = spawnSync("gh", args, { encoding: "utf8" });
   if (result.error || result.status !== 0) {
     const reason = result.error?.message ?? `gh exited ${result.status}: ${result.stderr.trim()}`;
     return { ok: false, reason };
