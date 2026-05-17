@@ -153,18 +153,22 @@ async function publishTargetWithRetry(opts, target, vsix, vscePat) {
       log("INFO", `published ${target}`);
       return { ok: true };
     }
-    if (!isTransient(r.stderr)) {
-      log("ERROR", `${target} failed terminally (non-transient): ${r.stderr.trim()}`);
-      return { ok: false, terminal: true, stderr: r.stderr };
+    // Combine stdout + stderr — vsce sometimes prints fatal errors to
+    // stdout (e.g. argument-parse failures, missing-file). The earlier
+    // version only logged stderr which was often empty.
+    const combined = `[exit=${r.status}] stderr=${r.stderr.trim()} | stdout=${r.stdout.trim()}`;
+    if (!isTransient(r.stderr) && !isTransient(r.stdout)) {
+      log("ERROR", `${target} failed terminally (non-transient): ${combined}`);
+      return { ok: false, terminal: true, stderr: r.stderr, stdout: r.stdout };
     }
     if (attempt < totalAttempts) {
       const backoff = Math.min(45, 5 * Math.pow(3, attempt - 1)) * 1000; // 5s, 15s, 45s
-      log("WARN", `${target} transient failure (attempt ${attempt}/${totalAttempts}); backing off ${backoff / 1000}s`);
+      log("WARN", `${target} transient failure (attempt ${attempt}/${totalAttempts}; ${combined}); backing off ${backoff / 1000}s`);
       await new Promise((r) => setTimeout(r, backoff));
     }
   }
   log("ERROR", `${target} failed terminally after ${totalAttempts} attempts`);
-  return { ok: false, terminal: true, stderr: lastResult?.stderr ?? "" };
+  return { ok: false, terminal: true, stderr: lastResult?.stderr ?? "", stdout: lastResult?.stdout ?? "" };
 }
 
 function appendStepSummary(markdown) {
