@@ -1,0 +1,27 @@
+/*
+ * Grid Editor webview CSS bundle entry point (US6 Phase 8.5).
+ *
+ * esbuild resolves the @import below + every nested @import inside
+ * glide-data-grid's index.css and inlines every byte into the
+ * produced dist/webviews/grid/bundle.css. The HTML template loads
+ * that bundle via a `<link rel="stylesheet">` tag.
+ *
+ * Why this matters: glide-data-grid ships its CSS as a top-level
+ * index.css that @imports 14 sub-files (data-grid-overlay-editor,
+ * markdown-container, bubbles-overlay, number-overlay, etc.). The
+ * earlier text-loader approach injected only the top-level file's
+ * raw @imports as a `<style>` tag — the browser then tried to
+ * resolve those @imports relative to the webview's origin and got
+ * 403s, leaving the data-grid container styles unresolved (canvas
+ * mounted but laid out at 0 effective size → no rows visible).
+ */
+
+/*
+ * Direct relative path bypasses the package's `exports` map (which
+ * restricts the CSS file to "import" / "require" conditions and so
+ * confuses esbuild's `browser` resolution). The path is stable across
+ * pnpm reinstalls because the file lives at a deterministic location
+ * inside the package; pnpm's symlink scheme still resolves
+ * `node_modules/@glideapps/glide-data-grid/` to the unpacked module.
+ */
+@import "../../../node_modules/@glideapps/glide-data-grid/dist/index.css";

@@ -122,10 +122,14 @@ export class GridEditorHost implements vscode.Disposable {
     const bundleUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(deps.extensionUri, "dist", "webviews", "grid", "bundle.js"),
     );
+    const stylesheetUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(deps.extensionUri, "dist", "webviews", "grid", "bundle.css"),
+    );
     const nonce = randomBytes(16).toString("hex");
     this.panel.webview.html = buildGridWebviewHtml({
       cspSource: this.panel.webview.cspSource,
       bundleSrc: bundleUri.toString(),
+      stylesheetSrc: stylesheetUri.toString(),
       nonce,
       title,
     });
@@ -144,6 +148,11 @@ export class GridEditorHost implements vscode.Disposable {
       getSession().onChanged(() => {
         const current = this.deps.conn.connection.mode;
         if (current !== lastMode) {
+          log.info("grid.host.modeChanged", {
+            connection: this.deps.conn.id,
+            from: lastMode,
+            to: current,
+          });
           lastMode = current;
           this.send(buildModeChanged({ mode: current }));
         }
@@ -235,10 +244,21 @@ export class GridEditorHost implements vscode.Disposable {
   // ---------------------------------------------------------------------------
 
   private async onReady(): Promise<void> {
+    log.info("grid.host.ready", {
+      target: `${this.deps.schema}.${this.deps.table}`,
+      mode: this.deps.conn.connection.mode,
+    });
     try {
       this.descriptor = await fetchResultSetDescriptor(this.deps.conn.connection, {
         schema: this.deps.schema,
         table: this.deps.table,
+      });
+      log.info("grid.host.descriptor.ok", {
+        target: `${this.deps.schema}.${this.deps.table}`,
+        kind: this.descriptor.target.kind,
+        editable: this.descriptor.editable,
+        pkColumns: this.descriptor.pkColumns,
+        columnCount: this.descriptor.columns.length,
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -310,6 +330,13 @@ export class GridEditorHost implements vscode.Disposable {
       filters,
     });
 
+    log.info("grid.host.loadPage.start", {
+      target: `${this.deps.schema}.${this.deps.table}`,
+      offset: payload.offset,
+      limit: payload.limit,
+      filterCount: filters.length,
+      mode: this.deps.conn.connection.mode,
+    });
     try {
       const [pageRes, countRes] = await Promise.all([
         this.deps.conn.connection.query(pageStmt.text, pageStmt.values),
@@ -319,6 +346,7 @@ export class GridEditorHost implements vscode.Disposable {
         this.descriptor!.columns.map((c) => (r as Record<string, unknown>)[c.name] ?? null),
       );
       const totalRows = Number((countRes.rows[0] as Record<string, unknown>)?.["total"] ?? 0);
+      log.info("grid.host.loadPage.ok", { rows: rows.length, totalRows });
       this.send(
         buildPage({
           offset: payload.offset,
@@ -330,6 +358,12 @@ export class GridEditorHost implements vscode.Disposable {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       log.error("grid.host.loadPage.failed", { reason });
+      // Surface the failure to the renderer so the user sees a banner
+      // instead of an indefinite "loading…" state. The renderer keys
+      // off the message type `loadFailed`; the validator does not need
+      // updating because this is HOST → renderer (outbound, not
+      // validated on receive).
+      this.send({ type: "loadFailed", payload: { reason } });
     }
   }
 

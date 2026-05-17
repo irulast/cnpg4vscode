@@ -299,11 +299,28 @@ export class ClustersTreeProvider implements vscode.TreeDataProvider<Node>, vsco
     this._emitter.fire();
   }
 
-  /** Public so the refresh command can call it. */
+  /**
+   * Full refresh — clears every cache (operator presence + cluster
+   * listing) and re-loads kubeconfig. Used by the explicit
+   * `cnpg.refresh` command and the kubeconfig file watcher (the user
+   * might have just installed the operator or switched accounts, so
+   * everything is suspect).
+   */
   refresh(): void {
     this.operatorByContext.clear();
     this.listingByContext.clear();
     this.reload();
+    this._emitter.fire();
+  }
+
+  /**
+   * Soft refresh — only invalidate the cluster listing. Operator
+   * presence rarely changes (install / uninstall is a deliberate
+   * operator action), so re-probing it on every 30s tick is wasted
+   * kube API load. Used by the auto-refresh timer.
+   */
+  refreshClustersOnly(): void {
+    this.listingByContext.clear();
     this._emitter.fire();
   }
 
@@ -359,11 +376,13 @@ export class ClustersTreeProvider implements vscode.TreeDataProvider<Node>, vsco
     try {
       let presence = this.operatorByContext.get(ctx.name);
       if (!presence) {
+        // Cache miss → actually hit the kube API. Log the result.
+        // Cache hits stay silent (the result hasn't changed and we
+        // shouldn't spam the output channel on every refresh tick).
         presence = await detectOperator(kc);
         this.operatorByContext.set(ctx.name, presence);
+        log.info("cnpg.operator.probed", { context: ctx.name, kind: presence.kind });
       }
-
-      log.info("cnpg.operator.probed", { context: ctx.name, kind: presence.kind });
 
       if (presence.kind === "absent") {
         return [
@@ -403,7 +422,9 @@ export class ClustersTreeProvider implements vscode.TreeDataProvider<Node>, vsco
       }
 
       let listing = this.listingByContext.get(ctx.name);
+      let listingWasFresh = false;
       if (!listing) {
+        listingWasFresh = true;
         const res = await listClustersClusterWide(kc);
         if (res.kind === "ok") {
           listing = { kind: "ok", namespaces: groupByNamespace(res.clusters) };
@@ -420,6 +441,7 @@ export class ClustersTreeProvider implements vscode.TreeDataProvider<Node>, vsco
       }
 
       if (listing.kind === "error") {
+        // Always log listing failures — they're actionable.
         log.warn("cnpg.list.failed", { context: ctx.name, kind: listing.error.kind });
         return [
           {
@@ -433,11 +455,16 @@ export class ClustersTreeProvider implements vscode.TreeDataProvider<Node>, vsco
         ];
       }
 
-      log.info("cnpg.list.ok", {
-        context: ctx.name,
-        namespaces: listing.namespaces.size,
-        clusters: [...listing.namespaces.values()].reduce((n, l) => n + l.length, 0),
-      });
+      // Only log successful list results when an actual API call ran
+      // (cache miss). Cache hits stay silent so the auto-refresh
+      // doesn't spam the output channel.
+      if (listingWasFresh) {
+        log.info("cnpg.list.ok", {
+          context: ctx.name,
+          namespaces: listing.namespaces.size,
+          clusters: [...listing.namespaces.values()].reduce((n, l) => n + l.length, 0),
+        });
+      }
 
       if (listing.namespaces.size === 0) {
         return [

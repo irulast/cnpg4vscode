@@ -37,6 +37,14 @@ const rendererOptions = {
 // tab. Bundled as an IIFE so the <script nonce="…"> tag can load it directly
 // without an additional loader. React-DOM dev warnings tree-shake out in
 // production builds via the `process.env.NODE_ENV` define below.
+//
+// NOTE: CSS is NOT processed by this bundle — it ships as a separate
+// `dist/webviews/grid/bundle.css` (see gridWebviewCssOptions below) and is
+// loaded by the webview HTML via a `<link rel="stylesheet">` tag. The
+// earlier text-loader approach broke because glide-data-grid's `index.css`
+// uses `@import` rules to pull in 14 sub-CSS files; injecting the top-level
+// file as a `<style>` tag left the imports unresolved (the webview origin
+// 403'd on them). esbuild's css loader follows @imports and inlines them.
 const gridWebviewOptions = {
   ...baseOptions,
   platform: "browser",
@@ -45,10 +53,22 @@ const gridWebviewOptions = {
   outfile: "dist/webviews/grid/bundle.js",
   format: "iife",
   jsx: "automatic",
-  loader: { ".css": "text" },
   define: {
     "process.env.NODE_ENV": production ? '"production"' : '"development"',
   },
+  // Treat any .css imports in the TSX as side-effect-free — they're handled
+  // by the css bundle target below.
+  loader: { ".css": "empty" },
+};
+
+// Grid Editor webview CSS bundle — esbuild follows `@import` chains and
+// inlines every glide-data-grid sub-stylesheet into one file. Loaded by
+// the HTML template via `<link rel="stylesheet">`.
+const gridWebviewCssOptions = {
+  ...baseOptions,
+  entryPoints: ["src/webviews/grid/bundle.css"],
+  outfile: "dist/webviews/grid/bundle.css",
+  loader: { ".css": "css" },
 };
 
 async function run() {
@@ -56,13 +76,20 @@ async function run() {
     const extCtx = await context(extensionOptions);
     const rendererCtx = await context(rendererOptions);
     const gridCtx = await context(gridWebviewOptions);
-    await Promise.all([extCtx.watch(), rendererCtx.watch(), gridCtx.watch()]);
+    const gridCssCtx = await context(gridWebviewCssOptions);
+    await Promise.all([
+      extCtx.watch(),
+      rendererCtx.watch(),
+      gridCtx.watch(),
+      gridCssCtx.watch(),
+    ]);
     console.log("[esbuild] watching...");
   } else {
     await Promise.all([
       build(extensionOptions),
       build(rendererOptions),
       build(gridWebviewOptions),
+      build(gridWebviewCssOptions),
     ]);
     console.log("[esbuild] build complete");
   }
