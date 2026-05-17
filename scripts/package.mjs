@@ -43,6 +43,12 @@ const idx = argv.indexOf("--target");
 const onlyTarget = idx > 0 && argv[idx + 1] ? argv[idx + 1] : null;
 const targets = onlyTarget ? [onlyTarget] : TARGETS;
 
+// `vsce publish` rejects a VSIX that wasn't packaged with the matching
+// pre-release flag. Detect from the version string (SemVer suffix) so
+// the packager is self-describing — no need for the CI workflow to
+// pass an extra flag for pre-release tags.
+const isPreRelease = /-/.test(VERSION);
+
 if (!existsSync("dist/extension.js")) {
   console.error("[package] dist/extension.js not found. Run `pnpm build` first.");
   process.exit(1);
@@ -66,7 +72,7 @@ for (const target of targets) {
     // vsce/yazl chokes when the output path already exists as a 0-byte
     // file (leftover from a partial previous run). Remove first.
     if (existsSync(outPath)) rmSync(outPath);
-    run("pnpm", [
+    const vsceArgs = [
       "exec",
       "vsce",
       "package",
@@ -75,7 +81,9 @@ for (const target of targets) {
       "-o",
       `${outDir}/${filename}`,
       "--no-dependencies",
-    ]);
+    ];
+    if (isPreRelease) vsceArgs.push("--pre-release");
+    run("pnpm", vsceArgs);
     console.log(`[package] ✓ ${target} → ${outDir}/${filename}`);
   } catch (err) {
     failures++;
