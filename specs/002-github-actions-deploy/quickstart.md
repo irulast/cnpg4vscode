@@ -192,7 +192,7 @@ gh api repos/irulast/cnpg4vscode/branches/master/protection \
 
 # 4. No workflow references hosted-runner labels
 grep -rn 'runs-on:' .github/workflows/
-# Every match should be `runs-on: [self-hosted, linux, X64, mke-builds]`
+# Every match should be `runs-on: mke-builds`
 # NOT `runs-on: ubuntu-latest` etc.
 
 # 5. No workflow uses pull_request_target (CWE pattern)

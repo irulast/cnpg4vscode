@@ -175,16 +175,19 @@ consumed by this spec via labels.
 
 | Pool | Labels | Min / Max | Use |
 |---|---|---|---|
-| `mke-default` | `self-hosted, linux, X64, mke-default` | 1 / 5 | Other repos in the org (NOT consumed by this spec) |
-| `mke-builds` | `self-hosted, linux, X64, mke-builds` | 0 / 10 | All three workflows in this spec |
+| `mke-default` | `mke-default` | 1 / 5 | Other repos in the org (NOT consumed by this spec) |
+| `mke-builds` | `mke-builds` | 0 / 10 | All three workflows in this spec |
 
 **Identity**: pool name is the canonical reference. Labels are the
 runtime addressing.
 
 **Spec-side requirement**: every workflow file's `runs-on:` MUST
-specify `[self-hosted, linux, X64, mke-builds]` exactly. The
-defensive `RUNNER_ENVIRONMENT` check (research §2) is a second layer
-in case the label list changes upstream.
+specify `mke-builds` exactly (single-string label, NOT the standard
+`[self-hosted, linux, X64, <name>]` triple — ARC's runner-scale-sets
+mode registers runners under the scale-set name alone). Every job
+MUST also specify `container: image: node:22-bookworm` because ARC
+kubernetes mode runs each job's steps in a child pod whose image the
+workflow chooses (see research §2 for the full rationale).
 
 **Lifecycle**: owned entirely by the k8s-setup repository. This spec
 does not provision, scale, or upgrade the pool. If the pool's name
