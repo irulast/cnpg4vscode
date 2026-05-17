@@ -20,8 +20,11 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, existsSync, rmSync, readFileSync } from "node:fs";
 import { argv } from "node:process";
+
+const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+const VERSION = pkg.version;
 
 const TARGETS = [
   "linux-x64",
@@ -55,8 +58,10 @@ for (const target of targets) {
   try {
     // vsce package --target <target> -o <outfile>
     // The file name is built from package.json's name + version + target so it
-    // can co-exist in the same out folder.
-    const filename = `cnpg4vscode-${target}.vsix`;
+    // can co-exist in the same out folder. The version segment is load-bearing
+    // for spec 002's publish pipeline: `publish-vsix.mjs` looks up artifacts
+    // by `cnpg4vscode-<target>-<version>.vsix`.
+    const filename = `cnpg4vscode-${target}-${VERSION}.vsix`;
     const outPath = `${outDir}/${filename}`;
     // vsce/yazl chokes when the output path already exists as a 0-byte
     // file (leftover from a partial previous run). Remove first.

@@ -125,6 +125,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Check Marketplace for existing version
         run: |
+          # vsce is a devDependency; its binary lives in ./node_modules/.bin.
+          # The check-marketplace-version.mjs script spawns `vsce` as a bare
+          # binary name, so PATH must include the local bin dir.
+          export PATH="$PWD/node_modules/.bin:$PATH"
           node scripts/ci/check-marketplace-version.mjs \
             cnpg4vscode cnpg4vscode \
             "${{ needs.preflight.outputs.version }}" \
@@ -166,9 +170,18 @@ jobs:
       - name: Move VSIXs into a flat artifact dir
         run: |
           mkdir -p vsix-bundle
-          mv ./*.vsix vsix-bundle/ 2>/dev/null || true
+          # scripts/package.mjs writes to dist/vsix/. Workflow callers
+          # of older package.mjs revisions may have dropped them in
+          # ./ or dist/; cover all three locations.
+          mv dist/vsix/*.vsix vsix-bundle/ 2>/dev/null || true
           mv dist/*.vsix vsix-bundle/ 2>/dev/null || true
+          mv ./*.vsix vsix-bundle/ 2>/dev/null || true
+          echo "---vsix-bundle contents:---"
           ls -la vsix-bundle/
+          test -n "$(ls -A vsix-bundle/ 2>/dev/null)" || {
+            echo "::error::vsix-bundle is empty after package step"
+            exit 1
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: vsix-bundle-${{ github.ref_name }}
@@ -215,6 +228,8 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
+          # vsce is a devDependency — local bin dir on PATH.
+          export PATH="$PWD/node_modules/.bin:$PATH"
           node scripts/ci/publish-vsix.mjs \
             --tag "${{ github.ref_name }}" \
             --channel "${{ needs.preflight.outputs.channel }}" \
