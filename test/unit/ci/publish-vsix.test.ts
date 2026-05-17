@@ -49,21 +49,38 @@ function run(args: {
     writeFileSync(join(dir, "counters.json"), "{}");
     writeFileSync(join(dir, "callLog.txt"), "");
     // Stub vsce — succeeds, transiently fails, or terminally fails per
-    // the outcome map. Reads target from --target argv.
+    // the outcome map. The target is no longer passed via --target
+    // (vsce rejects --target + --packagePath together; the target is
+    // baked into the VSIX itself). The stub parses the target out of
+    // the --packagePath filename: `cnpg4vscode-<target>-<version>.vsix`.
     const fakeVsce = `#!/usr/bin/env bash
 set -eu
 DIR="${dir}"
 # Capture full argv to call log.
 printf "%q " "$@" >> "$DIR/callLog.txt"
 printf "\\n" >> "$DIR/callLog.txt"
-# Parse the --target arg.
+# Parse the --packagePath arg and pull the target out of the filename.
 TARGET=""
+PACKAGE_PATH=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --target) TARGET="$2"; shift 2 ;;
+    --packagePath) PACKAGE_PATH="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
+if [ -n "$PACKAGE_PATH" ]; then
+  # cnpg4vscode-<target>-<version>.vsix
+  BN=$(basename "$PACKAGE_PATH" .vsix)
+  # Strip the leading 'cnpg4vscode-' prefix.
+  STRIPPED="\${BN#cnpg4vscode-}"
+  # Now STRIPPED = '<target>-<version>'. Target is everything before
+  # the LAST '-N.N.N' SemVer suffix. Easier: known targets list.
+  for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64 win32-arm64; do
+    case "$STRIPPED" in
+      \${t}-*) TARGET="$t"; break ;;
+    esac
+  done
+fi
 node -e "
 const fs=require('fs');
 const out=JSON.parse(fs.readFileSync('$DIR/outcomes.json','utf8'));
@@ -149,7 +166,9 @@ describe("publish-vsix.mjs", () => {
     expect(r.status).toBe(0);
     expect(r.callLog.length).toBe(6);
     for (const line of r.callLog) {
-      expect(line).toMatch(/--target/);
+      // --target is NOT passed; the target is baked into the VSIX
+      // filename in --packagePath and vsce rejects the combination.
+      expect(line).not.toMatch(/--target/);
       expect(line).toMatch(/--packagePath/);
     }
   });
@@ -244,8 +263,9 @@ describe("publish-vsix.mjs", () => {
     });
     expect(r.status).toBe(0);
     expect(r.callLog.length).toBe(2);
-    expect(r.callLog.some((l) => l.includes("--target darwin-arm64"))).toBe(true);
-    expect(r.callLog.some((l) => l.includes("--target win32-x64"))).toBe(true);
+    // Target is now identified by --packagePath filename, not --target.
+    expect(r.callLog.some((l) => l.includes("darwin-arm64"))).toBe(true);
+    expect(r.callLog.some((l) => l.includes("win32-x64"))).toBe(true);
   });
 
   it("PAT-leak invariant: VSCE_PAT does not appear in stdout or stderr or call log", () => {
