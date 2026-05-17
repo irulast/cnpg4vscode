@@ -71,6 +71,18 @@ function activeNotebookConnection(): ActiveConnection | undefined {
   return getSession().connections.get(bound);
 }
 
+/**
+ * Fallback when no editor is bound to a connection — return the first
+ * connection in insertion order. Used by the status bar so it always
+ * reflects the actual mode of *some* live connection rather than a
+ * hard-coded `writeMode: false`.
+ */
+function firstActiveConnection(): ActiveConnection | undefined {
+  const session = getSession();
+  if (session.connections.size === 0) return undefined;
+  return [...session.connections.values()][0];
+}
+
 /** Find any open cnpg-sql notebook, preferring the active one. */
 function mostRecentNotebookConnection(): ActiveConnection | undefined {
   return (
@@ -617,28 +629,24 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     });
   });
 
-  // Keep the status bar in sync with the active notebook editor's
-  // selected controller. The Schema view visibility is managed by the
-  // session-change listener in extension.ts (NEVER by editor focus).
+  // Keep the status bar in sync with the focused editor's connection.
+  // When a notebook is focused the bound controller's mode wins; when
+  // some other editor (Grid Editor webview, .sql file, settings tab)
+  // is focused we fall back to the (first / single) active connection's
+  // ACTUAL mode — never lie about it, and never flip the
+  // `cnpg.connection.writeMode` context key away from the real value
+  // (the Schema-tree menu's destructive actions depend on this).
   const updateStatusBarForActiveNotebook = () => {
-    const conn = activeNotebookConnection();
+    const conn = activeNotebookConnection() ?? firstActiveConnection();
     if (conn) {
+      const isWrite = conn.connection.mode === "write";
+      const isNotebookActive = activeNotebookConnection() !== undefined;
+      const suffix = isNotebookActive ? "" : " (no active notebook)";
       setStatusBar(
-        `CNPG: ${conn.cluster.clusterName}/${conn.database} ⚙ ${conn.connection.mode === "write" ? "write" : "read-only"}`,
-        { writeMode: conn.connection.mode === "write" },
+        `CNPG: ${conn.cluster.clusterName}/${conn.database} ⚙ ${isWrite ? "write" : "read-only"}${suffix}`,
+        { writeMode: isWrite },
       );
-      void vscode.commands.executeCommand(
-        "setContext",
-        "cnpg.connection.writeMode",
-        conn.connection.mode === "write",
-      );
-    } else if (getSession().connections.size > 0) {
-      const any = [...getSession().connections.values()][0]!;
-      setStatusBar(
-        `CNPG: ${any.cluster.clusterName}/${any.database} (no active notebook)`,
-        { writeMode: false, tooltip: "Click to open or pick a notebook." },
-      );
-      void vscode.commands.executeCommand("setContext", "cnpg.connection.writeMode", false);
+      void vscode.commands.executeCommand("setContext", "cnpg.connection.writeMode", isWrite);
     } else {
       setStatusBar(null);
       void vscode.commands.executeCommand("setContext", "cnpg.connection.writeMode", false);

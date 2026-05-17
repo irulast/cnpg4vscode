@@ -26,6 +26,8 @@ export interface BuildHtmlOptions {
   readonly cspSource: string;
   /** The bundle script URI from `webview.asWebviewUri(...)`. */
   readonly bundleSrc: string;
+  /** The bundle stylesheet URI from `webview.asWebviewUri(...)`. */
+  readonly stylesheetSrc: string;
   /** Per-load nonce — `crypto.randomUUID()`-shaped. The host generates it. */
   readonly nonce: string;
   /** Display title — embedded as the document <title> for the host's panel. */
@@ -52,6 +54,7 @@ export function buildGridWebviewHtml(opts: BuildHtmlOptions): string {
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(opts.title)}</title>
+  <link rel="stylesheet" href="${opts.stylesheetSrc}" />
   <style nonce="${opts.nonce}">
     html, body, #root {
       height: 100%;

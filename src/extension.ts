@@ -125,7 +125,11 @@ export function activate(context: vscode.ExtensionContext): void {
       intervalMs: resolved.refreshIntervalSeconds * 1000,
       onTick: () => {
         log.trace("refresh.tick", {});
-        clustersProvider.refresh();
+        // Auto-refresh only re-lists clusters — operator presence is
+        // stable and re-probing it every tick would spam the kube API
+        // (and the output channel) for zero practical benefit. The
+        // explicit `cnpg.refresh` command still does a full refresh.
+        clustersProvider.refreshClustersOnly();
       },
     },
     {
