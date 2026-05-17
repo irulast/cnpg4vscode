@@ -137,7 +137,7 @@ Implementation: `validate-tag.mjs` and the pre-package step both
 ensure `package.json#version` matches the tag's SemVer string
 (suffix included).
 
-**Verification**: `vsce show cnpg4vscode.cnpg4vscode --json` returns
+**Verification**: `vsce show irulast.cnpg4vscode --json` returns
 all versions with their `preview` and `preRelease` flags so the
 collision check (FR-013) can compare on the
 `(version, preRelease)` tuple.
