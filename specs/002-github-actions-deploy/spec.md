@@ -16,6 +16,11 @@
 - Q: When the publish workflow fires for a commit whose CI gate hasn't yet reached a conclusion (tag pushed before post-merge CI finishes), what should it do? → A: **Wait** for the CI gate to conclude on the tagged commit, bounded by a 30-minute timeout. Green → proceed. Red → fail the publish. Timeout → fail the publish with a "CI did not complete within 30 minutes" message so the maintainer can investigate (no implicit silent retry).
 - Q: When the per-platform publish set ends in partial-success (some VSIXs live on the Marketplace, some failed after retries), what does the workflow do? → A: **Build all six VSIXs up front, then publish in a separate stage.** On partial-publish failure after retries, the workflow fails loud, leaves the already-published platforms live (Marketplace versions are immutable — rollback is not an option), and exposes a `workflow_dispatch`-callable recovery entry-point that publishes only the missing platforms for the same tag. The maintainer doesn't bump-and-re-push the tag.
 
+### Session 2026-05-17 (post-implementation revisions)
+
+- Q: How does a SemVer pre-release tag actually map to a Marketplace publish, given Marketplace's plain-SemVer constraint? → A: **REVISED.** The Marketplace rejects SemVer pre-release suffixes in the version field (`The VS Marketplace doesn't support prerelease versions`). Implemented convention: `v<X>.<Y>.<Z>` publishes `X.Y.Z` to stable; `v<X>.<Y>.<Z>-pre.<N>` publishes `X.Y.Z` to pre-release. The `-pre.<N>` suffix is stripped before the version goes anywhere near the Marketplace. The pre-release channel is signalled by the `--pre-release` flag at both `vsce package` and `vsce publish` (bakes metadata into the VSIX itself). See research §3 for the full mechanics.
+- Q: Self-hosted runners or GitHub-hosted? → A: **REVISED to GitHub-hosted (ubuntu-latest).** The original spec mandated the self-hosted ARC pool (mke-builds) to avoid hosted-runner billing concerns, but when the repo went public the ARC controller's scope (private org) couldn't pick up jobs. The workflows don't actually need anything self-hosted-only (no internal-only services, no cluster API access from CI). Switched to ubuntu-latest. FR-004 and SC-008 are reversed accordingly (see updated Functional Requirements).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Every pull request runs the quality gate before it can merge (Priority: P1) 🎯 MVP
@@ -217,11 +222,15 @@ the allowlist file; the check passes.
 - **FR-003**: System MUST cache the package manager's dependency store
   across runs so the gate's wall-clock time on a cache hit is dominated
   by build + test, not dependency installation.
-- **FR-004**: System MUST run all CI work on the project's self-hosted
-  Kubernetes-backed runner pool, never on hosted GitHub runners. The
-  workflow MUST refuse to run on a hosted runner (defensive guard
-  against accidental misconfiguration billing the project for hosted
-  minutes).
+- **FR-004**: ~~System MUST run all CI work on the project's self-
+  hosted Kubernetes-backed runner pool~~ **REVERSED 2026-05-17 (see
+  Clarifications):** System runs on **GitHub-hosted ubuntu-latest**.
+  The original self-hosted ARC pool was scoped to the private org and
+  doesn't pick up jobs from public repos. The workflows have no
+  dependency on internal services, so hosted runners are functionally
+  equivalent for this project; the maintainer accepts GitHub Actions
+  billing for public-repo workflow minutes (free tier covers it for
+  the expected release cadence).
 - **FR-005**: System MUST allow contributors from forks to run the CI
   gate against their PR, but MUST NOT expose any repository secret to
   fork-originated workflow runs.
@@ -397,9 +406,14 @@ the allowlist file; the check passes.
   the new version within 10 minutes of the workflow's success time.
   No "the workflow said it shipped but the listing didn't update"
   ghost successes.
-- **SC-008**: 0 (zero) workflow runs ever execute on a hosted
-  GitHub runner (the defensive guard from FR-004 holds). Audited by
-  reviewing the runner labels on the most recent 50 workflow runs.
+- **SC-008**: ~~0 (zero) workflow runs ever execute on a hosted GitHub
+  runner~~ **REVERSED 2026-05-17:** every workflow run executes on
+  `ubuntu-latest`. The self-hosted-only invariant was a project-
+  preference design choice, not a security requirement; switching to
+  hosted has no impact on the PAT-leak invariant (SC-005), the
+  fork-PR isolation (SC-009), or any other security-bearing SC.
+  Public-repo workflow minutes are free under GitHub's policy for
+  open-source repositories.
 - **SC-009**: 0 (zero) publishing-related steps execute in the
   context of a fork PR. Audited by reviewing job-level conditions
   on the workflow files.
