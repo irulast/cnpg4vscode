@@ -8,9 +8,10 @@ and visualize relationships with ER diagrams. No `kubectl`
 shell-outs, no credential persistence to disk, native VS Code surfaces
 throughout.
 
-> **Status**: early development (`0.x.y`). The MVP feature set is
-> working end-to-end; releases ship per the
-> [roadmap](#roadmap) below.
+> **Status**: pre-1.0 (`0.x.y`). The full feature set across spec 001's
+> six user stories is implemented end-to-end; spec 002's CI/CD pipeline
+> is in place and Marketplace releases are automated. See the
+> [roadmap](#roadmap) for what's landed and what's next.
 
 ## Features
 
@@ -81,6 +82,30 @@ In Write mode, additional destructive actions appear:
   gated by a typed-name confirmation modal (you must type the
   fully-qualified target name exactly to proceed).
 
+### Grid Editor — DB-IDE-parity cell editing
+
+Right-click any table in the schema tree → **Open in Grid Editor** to
+open a dedicated tab with a canvas-rendered virtualized grid:
+
+- **Browse, sort, filter** — sticky header, per-column sort + filter
+  glyphs, full filter DSL (`=`, `≠`, `<`, `LIKE`, `IS NULL`, …).
+- **Edit cells** with a per-PG-type editor (text / number / boolean /
+  date / jsonb popout / enum dropdown). Edits buffer dirty;
+  **Apply** previews every parameterized `UPDATE` before running.
+  Per-row results stream in.
+- **FK navigation** — right-click an FK cell to jump to the
+  referenced row in a new pre-filtered tab.
+- **Export** the current filter to CSV, JSON, or runnable SQL
+  INSERTs. Every emitted statement passes through the same
+  credential-redaction chokepoint as logs.
+- **Layout + tab hibernation** — column widths, sort, filters
+  persist per `(cluster, database, schema, table)`. Tabs reopen
+  with VS Code workspace restore.
+
+The read-only gate still applies — Write mode is required for
+editing, and views / materialized views / tables without a PK stay
+read-only.
+
 ### ER diagram — Mermaid in markdown preview
 
 Right-click a database or schema in the Schema view → **CNPG: Show ER
@@ -120,11 +145,15 @@ document ready to paste into a support thread.
 
 ### Native VS Code surfaces
 
-No webviews are bundled in v1:
+Most surfaces are native — the only webview is the Grid Editor,
+opened on demand when you right-click a table:
 
 - **Clusters / Schema** — native `TreeView`s.
 - **SQL console** — native VS Code Notebook (`cnpg-sql`).
-- **Result grid** — native NotebookRendererProvider.
+- **Inline result grid** — native NotebookRendererProvider.
+- **Grid Editor** (on demand) — canvas-rendered virtualized webview
+  with CSP locked to `default-src 'none'`, no external CDNs, no
+  `unsafe-eval`. Theme-aware via `--vscode-*` variables.
 - **Cluster details** — markdown preview.
 - **ER diagram** — markdown preview (Mermaid via `bierner.markdown-mermaid`).
 - **Status bar** — native VS Code status bar with action menu.
@@ -134,10 +163,26 @@ included for `postgres` and `sql` languages.
 
 ## Install
 
-> Not yet on the Marketplace — packaging in progress. From source:
+**From the Marketplace** (recommended once a release is published):
 
 ```sh
-git clone <repo-url> cnpg4vscode
+code --install-extension cnpg4vscode.cnpg4vscode
+```
+
+Or search "CloudNativePG" in the **Extensions** view inside VS Code.
+
+**From a GitHub Release** (sideload — useful in air-gapped environments
+or for testing pre-release builds):
+
+1. Visit the [Releases page](https://github.com/irulast/cnpg4vscode/releases)
+   and download the VSIX matching your platform
+   (`cnpg4vscode-<platform>-<version>.vsix`).
+2. `code --install-extension <file>.vsix`
+
+**From source** (for development):
+
+```sh
+git clone https://github.com/irulast/cnpg4vscode.git
 cd cnpg4vscode
 pnpm install
 pnpm build
@@ -165,9 +210,14 @@ For dev-environment setup (running tests, the spec-kit workflow), see
 | `0.2.0` | Connect & run SQL in notebooks, read-only gate, status bar | landed |
 | `0.3.0` | Schema tree, per-node actions, typed-name confirmation | landed |
 | `0.4.0` | Notebook result-grid renderer, per-cluster notebook organization, ER diagram, snippets, report-problem | landed |
-| `0.5.0` | Cell editing (UPDATE/DELETE from the grid), saved-query history | planned |
-| `0.6.0` | Visual index / constraint editors, migration wizard | planned |
-| `1.0.0` | Marketplace release, per-platform packaging, full SC gate coverage | planned |
+| `0.5.0` | Cell editing (UPDATE/DELETE from the grid), saved-query history, full-featured Grid Editor (canvas grid + per-PG-type editors + bulk Apply + FK navigation + export) | landed |
+| `0.6.0` | Visual index / constraint editors, migration wizard, per-platform packaging (`scripts/package.mjs`) | landed |
+| `0.7.0` | Automated CI/CD via GitHub Actions on self-hosted runners — every PR gated by typecheck + lint + tests + build + audits + security scan; tag → Marketplace publish (stable + pre-release channels) + GitHub Release with per-platform VSIXs | landed |
+| `1.0.0` | First public Marketplace release; e2e test harness (`@vscode/test-electron` + testcontainers); performance budget enforcement | in progress |
+
+Releases are automated via GitHub Actions on self-hosted runners — see
+[`docs/release-process.md`](docs/release-process.md) for the maintainer
+runbook (bump → merge → push tag; the workflow handles the rest).
 
 ## Security
 
@@ -201,8 +251,14 @@ This project is governed by
 - Observability with no default telemetry.
 - Simplicity and YAGNI.
 
-The full feature spec and design artifacts live under
-[`specs/001-cnpg-cluster-explorer/`](specs/001-cnpg-cluster-explorer/).
+Feature specs live under [`specs/`](specs/):
+
+- [`001-cnpg-cluster-explorer/`](specs/001-cnpg-cluster-explorer/) —
+  the foundational extension (clusters, schemas, notebooks, Grid
+  Editor, ER diagrams, migration wizard).
+- [`002-github-actions-deploy/`](specs/002-github-actions-deploy/) —
+  the automated CI/CD pipeline (self-hosted runners, tag-triggered
+  Marketplace publish, partial-failure recovery).
 
 ## Contributing
 

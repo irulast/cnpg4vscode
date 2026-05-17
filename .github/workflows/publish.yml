@@ -1,0 +1,221 @@
+name: Publish
+
+# Spec 002 / T015 / US2. Tag-triggered Marketplace publish on
+# self-hosted runners. Channel is inferred from the tag's SemVer
+# suffix (stable when absent, pre-release when present). Build-then-
+# publish staging means all six VSIXs are produced and validated as
+# workflow artifacts BEFORE the first `vsce publish` invocation.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'        # stable: v0.2.0
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'      # pre-release: v0.2.0-beta.1
+  workflow_dispatch:                    # maintainer re-trigger for the same tag
+
+# Serialise per-tag — partial-success state (FR-017a) is recoverable
+# but only if a parallel run isn't racing the same tag.
+concurrency:
+  group: publish-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight (refuse hosted; validate tag; master-ancestry)
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    # FR-019 + research §5: refuse to run for forks / non-push events.
+    if: github.repository == 'irulast/cnpg4vscode' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    outputs:
+      channel: ${{ steps.tag.outputs.channel }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Refuse hosted runners (FR-004 / SC-008)
+        run: |
+          if [[ "${RUNNER_ENVIRONMENT:-self-hosted}" != "self-hosted" ]]; then
+            echo "::error::Hosted runner detected (${RUNNER_ENVIRONMENT}); this workflow requires self-hosted."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history for master-ancestry check
+      - name: Tag must be reachable from master (FR-018)
+        run: |
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          if ! git merge-base --is-ancestor "${{ github.sha }}" refs/remotes/origin/master; then
+            echo "::error::Tag ${{ github.ref_name }} points at a commit not reachable from master."
+            exit 1
+          fi
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate tag (FR-012)
+        id: tag
+        run: |
+          OUT=$(node scripts/ci/validate-tag.mjs "${{ github.ref_name }}")
+          echo "$OUT"
+          # OUT looks like: channel=stable;version=0.2.0
+          CHANNEL=$(echo "$OUT" | sed -n 's/^channel=\([^;]*\);.*/\1/p')
+          VERSION=$(echo "$OUT" | sed -n 's/^.*;version=\(.*\)$/\1/p')
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  wait-ci:
+    name: Wait for CI gate (30-min timeout)
+    needs: preflight
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Poll for CI gate conclusion (FR-011)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/ci/wait-for-ci-gate.mjs "${{ github.sha }}" \
+            --workflow ci.yml \
+            --timeout-seconds 1800 \
+            --poll-seconds 15
+
+  collision-check:
+    name: Marketplace collision check (FR-013)
+    needs: [preflight, wait-ci]
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check Marketplace for existing version
+        run: |
+          npx --no @vscode/vsce show --help >/dev/null  # warm the binary
+          node scripts/ci/check-marketplace-version.mjs \
+            cnpg4vscode cnpg4vscode \
+            "${{ needs.preflight.outputs.version }}" \
+            "${{ needs.preflight.outputs.channel }}"
+
+  package:
+    name: Package six per-platform VSIXs (FR-014)
+    needs: [preflight, wait-ci, collision-check]
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Package per-platform VSIXs
+        run: pnpm package
+      - name: Move VSIXs into a flat artifact dir
+        run: |
+          mkdir -p vsix-bundle
+          mv *.vsix vsix-bundle/ 2>/dev/null || true
+          mv dist/*.vsix vsix-bundle/ 2>/dev/null || true
+          ls -la vsix-bundle/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-bundle-${{ github.ref_name }}
+          path: vsix-bundle/
+          retention-days: 90
+
+  publish:
+    name: Publish to Marketplace (FR-014 + FR-017 + FR-017a)
+    needs: [preflight, package]
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix-bundle-${{ github.ref_name }}
+          path: vsix-bundle/
+      - name: Publish per-platform VSIXs
+        # PER-STEP env scope — VSCE_PAT is exposed ONLY to this step.
+        # Never job-level. Never argv. See contracts/secrets.md.
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          node scripts/ci/publish-vsix.mjs \
+            --tag "${{ github.ref_name }}" \
+            --channel "${{ needs.preflight.outputs.channel }}" \
+            --artifacts-dir ./vsix-bundle
+
+  release-create:
+    name: Create GitHub Release with VSIX assets (FR-020 + FR-021 + FR-022)
+    needs: [preflight, publish]
+    runs-on: [self-hosted, linux, X64, mke-builds]
+    permissions:
+      contents: write   # required for `gh release create` / `gh release upload`
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full tag history for previous-tag lookup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix-bundle-${{ github.ref_name }}
+          path: vsix-bundle/
+      - name: Resolve previous tag (or first-tag fallback)
+        id: prev
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # The previous tag is the one immediately before $TAG in the
+          # main history. If no previous tag exists (first release ever),
+          # fall back to the root commit and let generate-release-notes
+          # render the full history as the changelog.
+          PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+          if [[ -z "$PREV" ]]; then
+            PREV=$(git rev-list --max-parents=0 HEAD | head -n 1)
+            echo "::notice::No prior tag found; using root commit ${PREV} as changelog start"
+          fi
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+      - name: Generate release notes
+        env:
+          PREV: ${{ steps.prev.outputs.prev }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          node scripts/ci/generate-release-notes.mjs \
+            --from "${PREV}" \
+            --to "${TAG}" \
+            > release-notes.md
+          echo "----- release-notes.md -----"
+          cat release-notes.md
+      - name: Create or update GitHub Release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; uploading assets idempotently"
+            gh release upload "${TAG}" vsix-bundle/*.vsix --clobber
+            gh release edit "${TAG}" --notes-file release-notes.md
+          else
+            gh release create "${TAG}" vsix-bundle/*.vsix \
+              --title "${TAG}" \
+              --notes-file release-notes.md \
+              $(if [[ "${{ needs.preflight.outputs.channel }}" == "pre-release" ]]; then echo "--prerelease"; fi)
+          fi

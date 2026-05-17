@@ -27,7 +27,7 @@ import {
 import { initHistory } from "./state/history.js";
 import { CnpgNotebookSerializer, CNPG_NOTEBOOK_TYPE } from "./notebook/host-serializer.js";
 import { CnpgNotebookController } from "./notebook/controller.js";
-import { disposeGridRegistry, initGridRegistry } from "./grid/registry.js";
+import { disposeGridRegistry, initGridRegistry, restoreGridPanel } from "./grid/registry.js";
 
 const CONFIG_SECTION = "cnpg4vscode";
 
@@ -75,6 +75,18 @@ export function activate(context: vscode.ExtensionContext): void {
     extensionUri: context.extensionUri,
     workspaceState: context.workspaceState,
   });
+  // Grid Editor tab hibernation (T158). VS Code re-creates the panel
+  // shell on workspace reload and asks us to re-bind it; we look up the
+  // saved (connectionId, schema, table) tuple and either adopt the
+  // panel into a fresh host or show a "reconnect to the cluster"
+  // placeholder when the connection is no longer active.
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer("cnpg.gridEditor", {
+      async deserializeWebviewPanel(panel, state) {
+        await restoreGridPanel(panel, state);
+      },
+    }),
+  );
   registerCommands(context, { clustersProvider, schemaProvider });
 
   // Notebook serializer for cnpg-sql files (FR-035).

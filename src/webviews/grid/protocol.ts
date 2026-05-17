@@ -118,6 +118,11 @@ export interface ThemeTokens {
 }
 
 export interface ConnectionInfo {
+  /** Stable connection identifier (cluster/credential/database). Used by
+   *  the renderer to persist hibernation state for T158 — written via
+   *  `vscode.setState` so the WebviewPanelSerializer can re-bind on
+   *  workspace reload. */
+  readonly id: string;
   readonly mode: "readonly" | "write";
   readonly database: string;
   readonly cluster: string;

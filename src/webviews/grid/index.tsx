@@ -46,6 +46,12 @@ import {
 
 interface VsCodeApi {
   postMessage(msg: unknown): void;
+  /** Persists state across workspace reloads — consumed by the
+   *  `WebviewPanelSerializer` on restore. Only what's needed to re-bind
+   *  the panel to its connection + target; never carries credentials
+   *  or query results. */
+  setState(state: unknown): void;
+  getState(): unknown;
 }
 declare global {
   function acquireVsCodeApi(): VsCodeApi;
@@ -101,7 +107,7 @@ interface InitPayload {
     scrollTop: number;
     lastOpenedAt: number;
   } | null;
-  connection: { mode: "readonly" | "write"; database: string; cluster: string };
+  connection: { id: string; mode: "readonly" | "write"; database: string; cluster: string };
 }
 
 interface PagePayload {
@@ -237,67 +243,113 @@ function App(): JSX.Element {
   // The filter modal is now opened from the column-actions popover.
   const [filterModal, setFilterModal] = useState<ColumnLike | null>(null);
 
-  // Receive messages from the host. Every message is also logged to
-  // the webview console — open "Developer: Open Webview Developer
-  // Tools" (cmd palette) to see the trace when debugging.
-  useEffect(() => {
-    function onMessage(event: MessageEvent): void {
-      const msg = event.data as { type: string; payload?: unknown };
-      // eslint-disable-next-line no-console
-      console.log("[cnpg-grid] inbound", msg.type, msg.payload);
-      if (msg.type === "init") {
-        const p = msg.payload as InitPayload;
-        setInit(p);
-        if (p.persistedState?.columnWidths) {
-          setColumnWidths({ ...p.persistedState.columnWidths });
-        }
-        if (p.persistedState?.sort) setSort([...p.persistedState.sort]);
-        if (p.persistedState?.filters) setFilters([...p.persistedState.filters]);
-      } else if (msg.type === "page") {
-        setPage(msg.payload as PagePayload);
-        setLoadError(null);
-      } else if (msg.type === "loadFailed") {
-        const reason = (msg.payload as { reason: string }).reason;
-        setLoadError(reason);
-        setPage({ offset: 0, rows: [], totalRows: 0, truncated: false });
-      } else if (msg.type === "themeChanged") {
-        setTheme(snapshotCanvasTheme());
-      } else if (msg.type === "modeChanged") {
-        setInit((prev) =>
-          prev
-            ? {
-                ...prev,
-                connection: { ...prev.connection, mode: (msg.payload as { mode: "readonly" | "write" }).mode },
+  // The handler-ref pattern: the message listener is attached ONCE
+  // (on mount, via useEffect with [] deps), but `handlerRef.current`
+  // is reassigned on every render so the dispatched handler always
+  // closes over the LATEST init/page/dirtyEdits values. Without this,
+  // the closure would capture the initial null/empty state and we
+  // couldn't read live state (only call setState updaters).
+  const handlerRef = useRef<(event: MessageEvent) => void>(() => {});
+  handlerRef.current = (event: MessageEvent): void => {
+    const msg = event.data as { type: string; payload?: unknown };
+    // eslint-disable-next-line no-console
+    console.log("[cnpg-grid] inbound", msg.type, msg.payload);
+    if (msg.type === "init") {
+      const p = msg.payload as InitPayload;
+      setInit(p);
+      if (p.persistedState?.columnWidths) {
+        setColumnWidths({ ...p.persistedState.columnWidths });
+      }
+      if (p.persistedState?.sort) setSort([...p.persistedState.sort]);
+      if (p.persistedState?.filters) setFilters([...p.persistedState.filters]);
+      // Persist enough state for the WebviewPanelSerializer (T158) to
+      // re-bind this tab to its connection on workspace reload. NEVER
+      // includes credentials, query results, or layout — layout lives
+      // in workspaceState keyed by the 6-tuple grid state key.
+      vscode.setState({
+        v: 1,
+        connectionId: p.connection.id,
+        schema: p.descriptor.target.schema,
+        table: p.descriptor.target.table,
+      });
+    } else if (msg.type === "page") {
+      setPage(msg.payload as PagePayload);
+      setLoadError(null);
+    } else if (msg.type === "loadFailed") {
+      const reason = (msg.payload as { reason: string }).reason;
+      setLoadError(reason);
+      setPage({ offset: 0, rows: [], totalRows: 0, truncated: false });
+    } else if (msg.type === "themeChanged") {
+      setTheme(snapshotCanvasTheme());
+    } else if (msg.type === "modeChanged") {
+      setInit((prev) =>
+        prev
+          ? {
+              ...prev,
+              connection: {
+                ...prev.connection,
+                mode: (msg.payload as { mode: "readonly" | "write" }).mode,
+              },
+            }
+          : prev,
+      );
+    } else if (msg.type === "applyPreview") {
+      setApplyPreview(msg.payload as ApplyPreviewPayload);
+    } else if (msg.type === "applyResult") {
+      const r = msg.payload as ApplyResultPayload;
+      if (r.outcome.kind === "applied") {
+        // **Promote the dirty values into page.rows** so the cell
+        // shows the just-committed value immediately. Without this
+        // the cell reverts to the original row[colIdx] value (which
+        // pre-dates the edit) the moment we clear the dirty mark,
+        // and the user has to refresh to see their own change.
+        // Reads current init + dirtyEdits via closure (live, because
+        // handlerRef gets reassigned on every render).
+        const dirty = dirtyEdits.get(r.rowKey);
+        if (dirty && init) {
+          const cols = init.descriptor.columns;
+          const pkCols = init.descriptor.pkColumns;
+          setPage((prev) => {
+            if (!prev) return prev;
+            const newRows = prev.rows.map((row) => {
+              const thisRowKey = buildRowKey(pkCols, cols, row);
+              if (thisRowKey !== r.rowKey) return row;
+              const newRow = [...row];
+              for (const [colName, value] of Object.entries(dirty.changes)) {
+                const colIdx = cols.findIndex((c) => c.name === colName);
+                if (colIdx >= 0) newRow[colIdx] = value;
               }
-            : prev,
-        );
-      } else if (msg.type === "applyPreview") {
-        setApplyPreview(msg.payload as ApplyPreviewPayload);
-      } else if (msg.type === "applyResult") {
-        const r = msg.payload as ApplyResultPayload;
-        if (r.outcome.kind === "applied") {
-          // Clear dirty mark for this row.
-          setDirtyEdits((prev) => {
-            const next = new Map(prev);
-            next.delete(r.rowKey);
-            return next;
+              return newRow;
+            });
+            return { ...prev, rows: newRows };
           });
-          setApplyErrors((prev) => {
-            const next = new Map(prev);
-            next.delete(r.rowKey);
-            return next;
-          });
-        } else {
-          // Keep dirty + surface the error inline. Both rejected and
-          // failed outcomes carry a `reason`.
-          const reason = r.outcome.reason;
-          setApplyErrors((prev) => new Map(prev).set(r.rowKey, reason));
         }
+        // Then clear the dirty mark and any prior error.
+        setDirtyEdits((prev) => {
+          const next = new Map(prev);
+          next.delete(r.rowKey);
+          return next;
+        });
+        setApplyErrors((prev) => {
+          if (!prev.has(r.rowKey)) return prev;
+          const next = new Map(prev);
+          next.delete(r.rowKey);
+          return next;
+        });
+      } else {
+        // Keep dirty + surface the error inline. Both rejected and
+        // failed outcomes carry a `reason`.
+        const reason = r.outcome.reason;
+        setApplyErrors((prev) => new Map(prev).set(r.rowKey, reason));
       }
     }
-    window.addEventListener("message", onMessage);
+  };
+
+  useEffect(() => {
+    const fn = (e: MessageEvent): void => handlerRef.current(e);
+    window.addEventListener("message", fn);
     vscode.postMessage({ type: "ready" });
-    return (): void => window.removeEventListener("message", onMessage);
+    return (): void => window.removeEventListener("message", fn);
   }, []);
 
   // VS Code theme switches don't always fire a `themeChanged` from
@@ -477,6 +529,16 @@ function App(): JSX.Element {
 
   const onRefresh = useCallback(() => {
     vscode.postMessage({ type: "refreshRequested" });
+  }, []);
+
+  const onExport = useCallback((format: "csv" | "json" | "sql-insert") => {
+    // Scope is fixed to `allRows` for now — the renderer doesn't track a
+    // selection range yet. The host re-queries with the current filter
+    // / sort and writes the serialised blob to a user-chosen file.
+    vscode.postMessage({
+      type: "exportRequested",
+      payload: { format, scope: "allRows" },
+    });
   }, []);
 
   const onApplyConfirm = useCallback(() => {
@@ -713,6 +775,7 @@ function App(): JSX.Element {
         onRefresh={onRefresh}
         onSearch={onOpenSearch}
         onRemoveFilter={onRemoveFilter}
+        onExport={onExport}
       />
       <SizedDataEditor
         editorRef={editorRef}
@@ -1063,6 +1126,7 @@ function Toolbar({
   onRefresh,
   onSearch,
   onRemoveFilter,
+  onExport,
 }: {
   dirtyCount: number;
   /** Null when fully editable; otherwise the reason editing is unavailable. */
@@ -1073,6 +1137,7 @@ function Toolbar({
   onRefresh: () => void;
   onSearch: () => void;
   onRemoveFilter: (column: string) => void;
+  onExport: (format: "csv" | "json" | "sql-insert") => void;
 }): JSX.Element {
   const readonly = readonlyReason !== null;
   return (
@@ -1103,6 +1168,7 @@ function Toolbar({
       <button onClick={onSearch} style={btnStyle(true)} title="Search (Ctrl+F)">
         🔍 Search
       </button>
+      <ExportMenu onExport={onExport} />
       {filters.length > 0 ? (
         <>
           <span style={{ opacity: 0.6, fontSize: "0.85em", marginLeft: 8 }}>Filters:</span>
@@ -1134,6 +1200,98 @@ function Toolbar({
           Double-click a cell to edit · click column to sort · chevron for column actions
         </span>
       )}
+    </div>
+  );
+}
+
+function ExportMenu({
+  onExport,
+}: {
+  onExport: (format: "csv" | "json" | "sql-insert") => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  // Click-outside dismissal: once the menu is open, a single document-
+  // level mousedown closes it on the NEXT click anywhere. The capture
+  // phase fires before the menu items' own click handlers so the menu
+  // is gone before we navigate, which feels right.
+  useEffect(() => {
+    if (!open) return;
+    const close = (): void => setOpen(false);
+    // Defer attachment to the next tick so the click that OPENED the
+    // menu doesn't immediately close it.
+    const timer = setTimeout(() => {
+      window.addEventListener("click", close, { once: true });
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("click", close);
+    };
+  }, [open]);
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        style={btnStyle(true)}
+        title="Export visible rows to CSV, JSON, or INSERT statements"
+      >
+        ⬇ Export ▾
+      </button>
+      {open ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            marginTop: 2,
+            background: "var(--vscode-menu-background, var(--vscode-editor-background))",
+            color: "var(--vscode-menu-foreground, var(--vscode-foreground))",
+            border: "1px solid var(--vscode-menu-border, var(--vscode-panel-border))",
+            borderRadius: 3,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+            zIndex: 100,
+            minWidth: 180,
+          }}
+        >
+          {(
+            [
+              { fmt: "csv", label: "CSV (.csv)" },
+              { fmt: "json", label: "JSON (.json)" },
+              { fmt: "sql-insert", label: "SQL INSERT (.sql)" },
+            ] as const
+          ).map(({ fmt, label }) => (
+            <button
+              key={fmt}
+              onClick={() => {
+                setOpen(false);
+                onExport(fmt);
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "6px 12px",
+                background: "transparent",
+                color: "inherit",
+                border: "none",
+                cursor: "pointer",
+                font: "inherit",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background =
+                  "var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground))";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
