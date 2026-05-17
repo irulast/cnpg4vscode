@@ -74,7 +74,7 @@ on:
 ```yaml
 jobs:
   preflight:
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    runs-on: mke-builds
     if: github.repository == 'irulast/cnpg4vscode' && github.event_name == 'push'
     steps:
       - name: Refuse hosted runners

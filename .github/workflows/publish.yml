@@ -5,6 +5,10 @@ name: Publish
 # suffix (stable when absent, pre-release when present). Build-then-
 # publish staging means all six VSIXs are produced and validated as
 # workflow artifacts BEFORE the first `vsce publish` invocation.
+#
+# Runner pool: `mke-builds` (ARC Runner Scale Set). ARC kubernetes mode
+# requires `container:` on every job — node:22-bookworm provides Node
+# + apt for gh/git install. See ci.yml comment header for details.
 
 on:
   push:
@@ -21,36 +25,31 @@ concurrency:
 
 jobs:
   preflight:
-    name: Preflight (refuse hosted; validate tag; master-ancestry)
-    runs-on: [self-hosted, linux, X64, mke-builds]
-    # FR-019 + research §5: refuse to run for forks / non-push events.
+    name: Preflight (validate tag; master-ancestry)
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm
     if: github.repository == 'irulast/cnpg4vscode' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     outputs:
       channel: ${{ steps.tag.outputs.channel }}
       version: ${{ steps.tag.outputs.version }}
     steps:
-      - name: Refuse hosted runners (FR-004 / SC-008)
+      - name: Install system tooling
         run: |
-          if [[ "${RUNNER_ENVIRONMENT:-self-hosted}" != "self-hosted" ]]; then
-            echo "::error::Hosted runner detected (${RUNNER_ENVIRONMENT}); this workflow requires self-hosted."
-            exit 1
-          fi
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # need full history for master-ancestry check
       - name: Tag must be reachable from master (FR-018)
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git fetch --no-tags origin master:refs/remotes/origin/master
           if ! git merge-base --is-ancestor "${{ github.sha }}" refs/remotes/origin/master; then
             echo "::error::Tag ${{ github.ref_name }} points at a commit not reachable from master."
             exit 1
           fi
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Validate tag (FR-012)
         id: tag
         run: |
@@ -65,12 +64,23 @@ jobs:
   wait-ci:
     name: Wait for CI gate (30-min timeout)
     needs: preflight
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm
     steps:
+      - name: Install system tooling (gh)
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list
+          apt-get update
+          apt-get install -y --no-install-recommends gh
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Poll for CI gate conclusion (FR-011)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,20 +93,28 @@ jobs:
   collision-check:
     name: Marketplace collision check (FR-013)
     needs: [preflight, wait-ci]
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm
     steps:
+      - name: Install system tooling
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+      - name: pnpm store cache
+        uses: actions/cache@v4
         with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - name: Check Marketplace for existing version
         run: |
-          npx --no @vscode/vsce show --help >/dev/null  # warm the binary
           node scripts/ci/check-marketplace-version.mjs \
             cnpg4vscode cnpg4vscode \
             "${{ needs.preflight.outputs.version }}" \
@@ -105,16 +123,25 @@ jobs:
   package:
     name: Package six per-platform VSIXs (FR-014)
     needs: [preflight, wait-ci, collision-check]
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm
     steps:
+      - name: Install system tooling
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+      - name: pnpm store cache
+        uses: actions/cache@v4
         with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Package per-platform VSIXs
@@ -122,7 +149,7 @@ jobs:
       - name: Move VSIXs into a flat artifact dir
         run: |
           mkdir -p vsix-bundle
-          mv *.vsix vsix-bundle/ 2>/dev/null || true
+          mv ./*.vsix vsix-bundle/ 2>/dev/null || true
           mv dist/*.vsix vsix-bundle/ 2>/dev/null || true
           ls -la vsix-bundle/
       - uses: actions/upload-artifact@v4
@@ -134,16 +161,25 @@ jobs:
   publish:
     name: Publish to Marketplace (FR-014 + FR-017 + FR-017a)
     needs: [preflight, package]
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm
     steps:
+      - name: Install system tooling
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+      - name: pnpm store cache
+        uses: actions/cache@v4
         with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
@@ -163,16 +199,27 @@ jobs:
   release-create:
     name: Create GitHub Release with VSIX assets (FR-020 + FR-021 + FR-022)
     needs: [preflight, publish]
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm
     permissions:
       contents: write   # required for `gh release create` / `gh release upload`
     steps:
+      - name: Install system tooling (gh)
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list
+          apt-get update
+          apt-get install -y --no-install-recommends gh
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # need full tag history for previous-tag lookup
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - uses: actions/download-artifact@v4
         with:
           name: vsix-bundle-${{ github.ref_name }}
@@ -182,8 +229,9 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           # The previous tag is the one immediately before $TAG in the
-          # main history. If no previous tag exists (first release ever),
+          # master history. If no previous tag exists (first release ever),
           # fall back to the root commit and let generate-release-notes
           # render the full history as the changelog.
           PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")

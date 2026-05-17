@@ -102,8 +102,8 @@ namespace in the maintainer's Kubernetes cluster:
   and is happy to wait a minute for runners to come up.
 
 Both pools host the runner under labels:
-- `self-hosted, linux, X64, mke-default`
-- `self-hosted, linux, X64, mke-builds`
+- `mke-default`
+- `mke-builds`
 
 Workflows target by the scale-set name (`mke-default` / `mke-builds`)
 plus `self-hosted` (defensive — defeats any future hosted-runner

@@ -1,14 +1,16 @@
 name: CI Gate
 
-# CI gate per spec 002. Runs on every PR targeting main and every push
-# to main. Fork PRs use `pull_request` (not `pull_request_target`) so
+# CI gate per spec 002. Runs on every PR targeting master and every push
+# to master. Fork PRs use `pull_request` (not `pull_request_target`) so
 # secrets are unavailable to fork execution contexts by GitHub's design
 # (see contracts/workflow-triggers.md + research §5).
 #
-# This workflow replaces the spec 001-era ci.yml that targeted
-# `ubuntu-latest`, used pnpm v9 / Node 20, ran the not-yet-implemented
-# `pnpm test:e2e` harness, and lacked the single summary check that
-# branch protection keys off of.
+# Runner pool: `mke-builds` (ARC Runner Scale Set name in
+# k8s-setup/infrastructure/mke/arc/). The scale-set name IS the label
+# in ARC's runner-scale-sets mode — NOT the standard `self-hosted, linux,
+# X64` triple. ARC kubernetes mode also requires every job to specify
+# `container:` so the workflow steps land in a child pod with a known
+# toolchain.
 
 on:
   pull_request:
@@ -22,61 +24,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  preflight:
-    name: Preflight (hosted-runner refusal + actionlint)
-    runs-on: [self-hosted, linux, X64, mke-builds]
-    steps:
-      - name: Refuse hosted runners (FR-004 / SC-008)
-        run: |
-          if [[ "${RUNNER_ENVIRONMENT:-self-hosted}" != "self-hosted" ]]; then
-            echo "::error::Hosted runner detected (${RUNNER_ENVIRONMENT}); this workflow requires self-hosted."
-            exit 1
-          fi
-      - uses: actions/checkout@v4
-      - name: Lint workflow YAML (actionlint v1.7.7)
-        run: |
-          bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
-          ./actionlint -color
-
   gate:
-    name: Gate (typecheck + lint + test + build + audits)
-    needs: preflight
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    name: Gate (actionlint + typecheck + lint + test + build + audits)
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm
     steps:
+      - name: Install system tooling (git, gh, ca-certs)
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
+          # gh CLI from GitHub's apt repo
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list
+          apt-get update
+          apt-get install -y --no-install-recommends gh
+          git --version && gh --version
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v3
+      - name: Install actionlint v1.7.7 + lint workflow YAML
+        run: |
+          set -eu
+          curl -fsSL -o /tmp/actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          tar xzf /tmp/actionlint.tar.gz -C /usr/local/bin actionlint
+          actionlint -color
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+      - name: pnpm store cache
+        uses: actions/cache@v4
         with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-
       - name: Typecheck
         run: pnpm typecheck
-
       - name: Lint
         run: pnpm lint
-
       - name: Unit tests
         run: pnpm test:unit
-
       - name: Contract tests
         run: pnpm test:contract
-
       - name: Production build
         run: pnpm build
-
       - name: Webview CSP audit
         run: pnpm audit:csp
-
       - name: Dependency licence audit
         run: pnpm audit:deps
-
       - name: Security advisory scan (FR-030)
         run: |
           # pnpm audit returns non-zero on findings; our parser is what
@@ -91,7 +90,9 @@ jobs:
   summary:
     name: summary
     needs: gate
-    runs-on: [self-hosted, linux, X64, mke-builds]
+    runs-on: mke-builds
+    container:
+      image: node:22-bookworm-slim
     steps:
       # Single zero-step job whose only purpose is to give branch
       # protection a stable check name ("CI Gate / summary") to require.

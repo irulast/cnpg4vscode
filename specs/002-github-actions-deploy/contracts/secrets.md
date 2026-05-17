@@ -58,7 +58,7 @@ configuration:
 |---|---|---|
 | `github.token` / `secrets.GITHUB_TOKEN` | `wait-for-ci-gate.mjs`, `gh release create/upload` | Auto-issued per workflow run; scope limited to the repo it runs against |
 | `GH_TOKEN` env var | All `gh` CLI calls | Set per-step to `${{ secrets.GITHUB_TOKEN }}` so `gh` doesn't prompt for auth |
-| `RUNNER_ENVIRONMENT` | Hosted-runner guard | Built-in GitHub env var; not a secret |
+| (none — hosted-runner refusal is enforced by the `runs-on:` label alone, not by env-var probing — see research §2) |  |  |
 
 If a future spec needs additional secrets (e.g. a Sentry DSN, a chat
 notifier webhook), this contract gets a new section — but until then,

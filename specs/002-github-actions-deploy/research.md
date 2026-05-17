@@ -64,40 +64,43 @@ The script reads the JSON output, picks the most recent eligible run
 
 ---
 
-## §2 — Self-hosted runner label selection
+## §2 — Self-hosted runner label selection + ARC kubernetes mode
 
 **Decision**:
 
 | Workflow | Runner label | Why |
 |---|---|---|
-| `ci.yml` (PR + push-to-master quality gate) | `[self-hosted, linux, X64, mke-builds]` | Builds pool has up to 10 concurrent runners (handles peak PR fan-out); cold-start latency is amortised by `actions/setup-node@v4`'s cache. Has the CPU/memory to run vitest + tsc + esbuild without contention. |
-| `publish.yml` (tag-triggered release) | `[self-hosted, linux, X64, mke-builds]` | Six per-platform packages are CPU-heavy; the +1 GiB headroom of `mke-builds` vs `mke-default` matters. Scale-from-zero is acceptable here because the user has just pushed a tag and is fine with a minute of warmup. |
-| `publish-recover.yml` (workflow_dispatch recovery) | `[self-hosted, linux, X64, mke-builds]` | Same workload as `publish.yml` (just with a narrower platform list); same pool. |
+| `ci.yml` (PR + push-to-master quality gate) | `mke-builds` | Builds pool has up to 10 concurrent runners (handles peak PR fan-out). Has the CPU/memory to run vitest + tsc + esbuild without contention. |
+| `publish.yml` (tag-triggered release) | `mke-builds` | Six per-platform packages are CPU-heavy; the +1 GiB headroom of `mke-builds` vs `mke-default` matters. Scale-from-zero is acceptable here because the user has just pushed a tag and is fine with a minute of warmup. |
+| `publish-recover.yml` (workflow_dispatch recovery) | `mke-builds` | Same workload as `publish.yml` (just with a narrower platform list); same pool. |
 
 `mke-default` is reserved for non-CI workloads (other repos in the
 maintainer's org) — its 1–5 warm pool is sized for that, not for
 multi-PR fan-out on a single project.
 
-**Defensive guard against hosted runners (SC-008 / FR-004)**:
+**Critical: ARC Runner Scale Sets uses a single label, NOT the
+standard self-hosted triple.** The conventional GitHub Actions form
+`runs-on: [self-hosted, linux, X64, mke-builds]` does NOT match — ARC
+registers runners with the scale-set name as their sole label. The
+correct form is `runs-on: mke-builds` (string, not array). The first
+deploy attempt of this spec used the triple form and the job sat
+queued indefinitely with no runner ever picking it up. The labrant-
+datawarehouse and other in-org workflows use the single-label form
+universally.
 
-```yaml
-jobs:
-  preflight:
-    runs-on: [self-hosted, linux, X64, mke-builds]
-    steps:
-      - name: Refuse to run on a hosted runner
-        run: |
-          if [[ "${RUNNER_ENVIRONMENT:-self-hosted}" != "self-hosted" ]]; then
-            echo "::error::Hosted runner detected (${RUNNER_ENVIRONMENT}); this workflow requires self-hosted."
-            exit 1
-          fi
-```
+**Critical: ARC kubernetes mode requires `container:` on every job.**
+The runner pod itself runs the actions-runner agent; per-job work
+happens in a child pod whose image must be specified by the workflow.
+Omitting `container:` causes jobs to fail at startup. The standard
+in-org image for Node work is `node:22-bookworm` (Node + apt for
+extra tooling install). Per-job tooling beyond Node (git, gh,
+actionlint) is installed in the first step via `apt-get install`.
 
-`RUNNER_ENVIRONMENT` is a built-in env var GitHub sets to
-`"self-hosted"` for self-hosted runners and `"github-hosted"` for
-hosted runners. The check is a one-line belt-and-braces over the
-`runs-on:` label list — defends against an accidental future config
-change.
+**Hosted-runner refusal**: dropped. The `runs-on: mke-builds` label
+literally cannot match a hosted runner (GitHub's hosted pool doesn't
+advertise `mke-builds`), so the previous belt-and-braces
+`RUNNER_ENVIRONMENT` shell check is now redundant. SC-008 is enforced
+by the label alone.
 
 **Rationale**: the spec's runner-pool entity acknowledges both pools
 exist; the choice between them is purely a sizing tradeoff and stays
