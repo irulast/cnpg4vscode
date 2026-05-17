@@ -124,13 +124,16 @@ jobs:
             pnpm package -- --target "$t"
           done
           mkdir -p vsix-bundle
-          mv ./*.vsix vsix-bundle/ 2>/dev/null || true
+          mv dist/vsix/*.vsix vsix-bundle/ 2>/dev/null || true
           mv dist/*.vsix vsix-bundle/ 2>/dev/null || true
+          mv ./*.vsix vsix-bundle/ 2>/dev/null || true
           ls -la vsix-bundle/
       - name: Republish requested targets
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
+          # vsce is a devDependency — local bin dir on PATH.
+          export PATH="$PWD/node_modules/.bin:$PATH"
           node scripts/ci/publish-vsix.mjs \
             --tag "${{ inputs.tag }}" \
             --channel "${{ needs.preflight.outputs.channel }}" \

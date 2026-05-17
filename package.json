@@ -2,7 +2,7 @@
   "name": "cnpg4vscode",
   "displayName": "CloudNativePG for VS Code",
   "description": "Browse, inspect, and manage CloudNativePG PostgreSQL clusters from VS Code.",
-  "version": "0.7.0-preview.2",
+  "version": "0.7.0-preview.3",
   "publisher": "cnpg4vscode",
   "license": "Apache-2.0",
   "engines": {
