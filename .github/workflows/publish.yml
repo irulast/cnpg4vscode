@@ -224,6 +224,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
         run: |
           set -eu
           if gh release view "${TAG}" >/dev/null 2>&1; then
@@ -231,8 +232,17 @@ jobs:
             gh release upload "${TAG}" vsix-bundle/*.vsix --clobber
             gh release edit "${TAG}" --notes-file release-notes.md
           else
+            # Use an array for the conditional --prerelease flag —
+            # `gh release create ... $(...)` works but shellcheck SC2046
+            # complains about unquoted command substitution, and quoting
+            # it ("$(...)") would pass an empty string arg to gh when the
+            # condition is false. Array form sidesteps both issues.
+            FLAGS=()
+            if [[ "$CHANNEL" == "pre-release" ]]; then
+              FLAGS+=("--prerelease")
+            fi
             gh release create "${TAG}" vsix-bundle/*.vsix \
               --title "${TAG}" \
               --notes-file release-notes.md \
-              $(if [[ "${{ needs.preflight.outputs.channel }}" == "pre-release" ]]; then echo "--prerelease"; fi)
+              "${FLAGS[@]}"
           fi
