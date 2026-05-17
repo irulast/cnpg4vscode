@@ -12,14 +12,21 @@ describe("buildConnectionConfig()", () => {
     caBundle: "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n",
   };
 
-  it("sets default_transaction_read_only=on in the options when mode is readonly", () => {
-    const cfg = buildConnectionConfig({ ...baseInput, mode: "readonly" });
-    expect(cfg.options ?? "").toMatch(/default_transaction_read_only=on/);
-  });
-
-  it("does not set default_transaction_read_only=on in write mode", () => {
-    const cfg = buildConnectionConfig({ ...baseInput, mode: "write" });
-    expect(cfg.options ?? "").not.toMatch(/default_transaction_read_only=on/);
+  it("does NOT bake default_transaction_read_only=on into the pool's libpq options (any mode)", () => {
+    // Originally the readonly mode set `-c default_transaction_read_only=on`
+    // on the pool. That broke runtime mode toggling: the libpq option
+    // is a per-SESSION setting, fixed at pool-creation time, so the
+    // pool's pooled connections still carried the readonly default
+    // after the user toggled `setMode("write")` — every UPDATE then
+    // failed with "cannot execute UPDATE in a read-only transaction".
+    // The server-side readonly gate is now per-query (BEGIN; SET LOCAL
+    // transaction_read_only=on; …; ROLLBACK) inside `query()` when
+    // `_mode === "readonly"`; it tracks the live mode and doesn't get
+    // pinned at pool creation.
+    for (const mode of ["readonly", "write"] as const) {
+      const cfg = buildConnectionConfig({ ...baseInput, mode });
+      expect(cfg.options ?? "").not.toMatch(/default_transaction_read_only/);
+    }
   });
 
   it("pins TLS to the provided CA bundle and overrides server identity", () => {

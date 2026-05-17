@@ -7,9 +7,18 @@
  * upstream certificate's CN is the in-cluster service name, not the
  * loopback host the tunnel binds to.
  *
- * The read-only gate's server-side layer (research.md §9 layer 2) is set
- * here via the libpq `options` parameter so EVERY connection in readonly
- * mode rejects writes regardless of what code path is sending the SQL.
+ * The read-only gate's server-side layer (research.md §9 layer 2) is
+ * enforced PER QUERY in `query()` below — `BEGIN; SET LOCAL
+ * transaction_read_only=on; …; ROLLBACK` when `_mode === "readonly"`.
+ * The earlier baseline of `default_transaction_read_only=on` baked into
+ * the pool's libpq options was REMOVED because it's a per-session
+ * setting that gets pinned at pool-creation time; when the user later
+ * toggles to write mode the pool's connections still carry the readonly
+ * default and writes get rejected with "cannot execute UPDATE in a
+ * read-only transaction". The per-query gate is sufficient on its own
+ * because (a) it tracks the live `_mode` and (b) the client-side
+ * readonly-gate (`src/pg/readonly-gate.ts`) already refuses to send
+ * write statements when `_mode === "readonly"`.
  */
 
 import type { PoolConfig, Pool, PoolClient } from "pg";
@@ -31,16 +40,15 @@ export interface ConnectionInput {
 }
 
 export function buildConnectionConfig(input: ConnectionInput): PoolConfig {
-  const options =
-    input.mode === "readonly" ? "-c default_transaction_read_only=on" : undefined;
-
   return {
     host: input.host,
     port: input.port,
     user: input.user,
     password: input.password,
     database: input.database,
-    options,
+    // NOTE: NO `options: "-c default_transaction_read_only=on"` here —
+    // see the module header for why. The per-query gate in `query()`
+    // is the live, mode-tracking enforcement.
     ssl: {
       ca: input.caBundle,
       // Hostname mismatch is expected (cert CN = service name, host = 127.0.0.1).
@@ -62,11 +70,9 @@ export interface DatabaseConnectionOpts extends ConnectionInput {
 /**
  * Thin wrapper around `pg.Pool` that carries the connection mode and the
  * cluster identity. Enforces the read-only server-side guard by wrapping
- * every readonly query in `BEGIN; SET LOCAL transaction_read_only=on; … ; ROLLBACK;`.
- *
- * (`default_transaction_read_only=on` in the connection options is the
- * baseline; SET LOCAL inside an explicit transaction provides the second
- * server-side gate the spec requires.)
+ * every readonly query in `BEGIN; SET LOCAL transaction_read_only=on; … ; ROLLBACK;`
+ * — see the module header for why this lives per-query rather than
+ * per-pool.
  */
 export class DatabaseConnection {
   private readonly pool: Pool;

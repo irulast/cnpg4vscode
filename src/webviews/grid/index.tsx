@@ -226,7 +226,15 @@ function App(): JSX.Element {
   // Built-in glide-data-grid search (Ctrl+F).
   const [showSearch, setShowSearch] = useState(false);
   const [searchValue, setSearchValue] = useState("");
-  // Per-column filter modal — opened from the header menu.
+  // Column-actions popover anchored to the chevron the user clicked.
+  // Holds both the column being acted on AND the screen position the
+  // popover should appear at (just below the chevron icon).
+  const [columnMenu, setColumnMenu] = useState<{
+    column: ColumnLike;
+    x: number;
+    y: number;
+  } | null>(null);
+  // The filter modal is now opened from the column-actions popover.
   const [filterModal, setFilterModal] = useState<ColumnLike | null>(null);
 
   // Receive messages from the host. Every message is also logged to
@@ -310,13 +318,15 @@ function App(): JSX.Element {
   }, [contextMenu]);
 
   // Build glide-data-grid columns from the descriptor + persisted
-  // widths + sort/filter indicators. Title gets a glyph for current
-  // sort direction; hasMenu enables the column-header menu (→ filter).
+  // widths + sort/filter indicators. Title gets a prominent glyph for
+  // the current sort direction (▲/▼ + index) and a 🔎 chip when
+  // filtered. `hasMenu: true` enables the chevron, which opens our
+  // ColumnActionsMenu popover with both sort and filter options.
   const columns: GridColumn[] = useMemo(() => {
     if (!init) return [];
     return init.descriptor.columns.map((c) => {
       const sortEntry = sort.find((s) => s.column === c.name);
-      const sortGlyph = sortEntry ? (sortEntry.dir === "asc" ? "  ↑" : "  ↓") : "";
+      const sortGlyph = sortEntry ? (sortEntry.dir === "asc" ? "  ▲" : "  ▼") : "";
       const filterGlyph = filters.some((f) => f.column === c.name) ? "  🔎" : "";
       const pkGlyph = c.isPk ? "🔑 " : "";
       return {
@@ -392,11 +402,26 @@ function App(): JSX.Element {
 
   const onCellEdited = useCallback(
     (cell: Item, newValue: EditableGridCell) => {
-      if (!init || !page) return;
+      // eslint-disable-next-line no-console
+      console.log("[cnpg-grid] onCellEdited fired", { cell, newValue });
+      if (!init || !page) {
+        // eslint-disable-next-line no-console
+        console.warn("[cnpg-grid] onCellEdited bailed: missing init or page");
+        return;
+      }
       const [colIdx, rowIdx] = cell;
       const col = init.descriptor.columns[colIdx];
       const row = page.rows[rowIdx];
-      if (!col || !row || col.isPk) return;
+      if (!col || !row) {
+        // eslint-disable-next-line no-console
+        console.warn("[cnpg-grid] onCellEdited bailed: cell out of range", { colIdx, rowIdx });
+        return;
+      }
+      if (col.isPk) {
+        // eslint-disable-next-line no-console
+        console.warn("[cnpg-grid] onCellEdited bailed: column is a PK", col.name);
+        return;
+      }
 
       let value: unknown;
       if (newValue.kind === GridCellKind.Boolean) {
@@ -412,6 +437,8 @@ function App(): JSX.Element {
 
       const rowKey = buildRowKey(init.descriptor.pkColumns, init.descriptor.columns, row);
       const pkValues = pkValuesFor(init.descriptor.pkColumns, init.descriptor.columns, row);
+      // eslint-disable-next-line no-console
+      console.log("[cnpg-grid] staged edit", { col: col.name, rowKey, value });
       setDirtyEdits((prev) => {
         const next = new Map(prev);
         const existing = next.get(rowKey) ?? { pkValues, changes: {} };
@@ -584,13 +611,25 @@ function App(): JSX.Element {
     [init, sort, postLayoutChanged, reloadPage],
   );
 
-  /** Click the column header's menu icon to open the per-column filter modal. */
+  /**
+   * Click the column header's chevron → open a popover with the full
+   * column-action menu (sort asc/desc/clear + filter + clear-filter).
+   * Anchored just below the chevron itself so the user sees a clear
+   * connection between the icon they clicked and the menu that opens.
+   */
   const onHeaderMenuClick = useCallback(
-    (colIdx: number) => {
+    (colIdx: number, screenPos: { x: number; y: number; width: number; height: number }) => {
       if (!init) return;
       const col = init.descriptor.columns[colIdx];
       if (!col) return;
-      setFilterModal(col);
+      setColumnMenu({
+        column: col,
+        // Anchor at the chevron's bottom-right; the popover renders
+        // below-and-left of that anchor so it doesn't get clipped by
+        // the grid's right edge.
+        x: screenPos.x + screenPos.width,
+        y: screenPos.y + screenPos.height,
+      });
     },
     [init],
   );
@@ -754,6 +793,33 @@ function App(): JSX.Element {
           onClose={() => setContextMenu(null)}
         />
       ) : null}
+      {columnMenu ? (
+        <ColumnActionsMenu
+          column={columnMenu.column}
+          x={columnMenu.x}
+          y={columnMenu.y}
+          activeSort={sort.find((s) => s.column === columnMenu.column.name)}
+          isFiltered={filters.some((f) => f.column === columnMenu.column.name)}
+          onSort={(dir) => {
+            const colName = columnMenu.column.name;
+            const newSort: Array<{ column: string; dir: "asc" | "desc" }> =
+              dir === null ? [] : [{ column: colName, dir }];
+            setSort(newSort);
+            postLayoutChanged({ sort: newSort });
+            reloadPage({ sort: newSort });
+            setColumnMenu(null);
+          }}
+          onFilter={() => {
+            setFilterModal(columnMenu.column);
+            setColumnMenu(null);
+          }}
+          onClearFilter={() => {
+            onRemoveFilter(columnMenu.column.name);
+            setColumnMenu(null);
+          }}
+          onClose={() => setColumnMenu(null)}
+        />
+      ) : null}
       {filterModal ? (
         <FilterModal
           column={filterModal}
@@ -808,7 +874,10 @@ function SizedDataEditor({
     e: { localEventX: number; localEventY: number; preventDefault: () => void },
   ) => void;
   onHeaderClicked: (colIdx: number) => void;
-  onHeaderMenuClick: (colIdx: number) => void;
+  onHeaderMenuClick: (
+    colIdx: number,
+    screenPos: { x: number; y: number; width: number; height: number },
+  ) => void;
   showSearch: boolean;
   searchValue: string;
   onSearchValueChange: (v: string) => void;
@@ -885,6 +954,12 @@ function SizedDataEditor({
         // sort/filter glyphs aren't crammed.
         rowHeight={32}
         headerHeight={36}
+        // **THE cell-edit fix**: glide-data-grid v6 changed the default
+        // from "double-click" to "second-click" (two discrete clicks
+        // with a pause between, NOT a fast double-click). Most users
+        // try to double-click and nothing happens. DB IDE convention
+        // is double-click; restore it.
+        cellActivationBehavior="double-click"
         // Built-in client-side search. Triggered by Ctrl+F or the
         // toolbar Search button.
         showSearch={showSearch}
@@ -1054,7 +1129,11 @@ function Toolbar({
         <span style={{ marginLeft: "auto", opacity: 0.6, fontSize: "0.85em" }}>
           {readonlyReason}
         </span>
-      ) : null}
+      ) : (
+        <span style={{ marginLeft: "auto", opacity: 0.55, fontSize: "0.8em" }}>
+          Double-click a cell to edit · click column to sort · chevron for column actions
+        </span>
+      )}
     </div>
   );
 }
@@ -1288,6 +1367,159 @@ function ErrorBanner({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Popover opened by the column-header chevron — exposes both sort and
+ * filter actions for the column, so the user doesn't have to remember
+ * which click does what. The header itself still toggles sort (DB-IDE
+ * convention), but the chevron is now a complete column-actions menu.
+ */
+function ColumnActionsMenu({
+  column,
+  x,
+  y,
+  activeSort,
+  isFiltered,
+  onSort,
+  onFilter,
+  onClearFilter,
+  onClose,
+}: {
+  column: ColumnLike;
+  x: number;
+  y: number;
+  activeSort: { column: string; dir: "asc" | "desc" } | undefined;
+  isFiltered: boolean;
+  onSort: (dir: "asc" | "desc" | null) => void;
+  onFilter: () => void;
+  onClearFilter: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  // Dismiss on outside click.
+  useEffect(() => {
+    const onClick = (): void => onClose();
+    // Fire on the NEXT macrotask so the click that opened us doesn't
+    // immediately close us.
+    const t = setTimeout(
+      () => window.addEventListener("click", onClick, { once: true }),
+      0,
+    );
+    return (): void => {
+      clearTimeout(t);
+      window.removeEventListener("click", onClick);
+    };
+  }, [onClose]);
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        // Anchor below the chevron; nudge left so the popover doesn't
+        // get clipped by the right edge of the viewport.
+        left: Math.max(8, x - 220),
+        top: y + 4,
+        zIndex: 1100,
+        background: "var(--vscode-menu-background)",
+        color: "var(--vscode-menu-foreground)",
+        border: "1px solid var(--vscode-menu-border, var(--vscode-panel-border))",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
+        padding: 4,
+        minWidth: 220,
+        borderRadius: 4,
+        fontSize: "0.9em",
+      }}
+    >
+      <div
+        style={{
+          padding: "4px 10px 6px",
+          opacity: 0.7,
+          fontSize: "0.85em",
+          borderBottom: "1px solid var(--vscode-menu-separatorBackground, var(--vscode-panel-border))",
+        }}
+      >
+        Column: <code>{column.name}</code>
+      </div>
+      <MenuItem
+        onClick={() => onSort("asc")}
+        active={activeSort?.dir === "asc"}
+        label="Sort ascending  ↑"
+      />
+      <MenuItem
+        onClick={() => onSort("desc")}
+        active={activeSort?.dir === "desc"}
+        label="Sort descending  ↓"
+      />
+      <MenuItem
+        onClick={() => onSort(null)}
+        disabled={!activeSort}
+        label="Clear sort"
+      />
+      <Separator />
+      <MenuItem onClick={onFilter} label={isFiltered ? "Edit filter…" : "Filter…"} />
+      {isFiltered ? <MenuItem onClick={onClearFilter} label="Clear filter" /> : null}
+    </div>
+  );
+}
+
+function MenuItem({
+  onClick,
+  label,
+  active,
+  disabled,
+}: {
+  onClick: () => void;
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+}): JSX.Element {
+  return (
+    <button
+      onClick={(e) => {
+        if (disabled) return;
+        e.stopPropagation();
+        onClick();
+      }}
+      disabled={disabled}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        padding: "6px 10px",
+        background: active ? "var(--vscode-menu-selectionBackground, transparent)" : "transparent",
+        color: disabled
+          ? "var(--vscode-disabledForeground)"
+          : active
+            ? "var(--vscode-menu-selectionForeground, var(--vscode-menu-foreground))"
+            : "inherit",
+        border: "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontSize: "inherit",
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.background = "var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground))";
+      }}
+      onMouseLeave={(e) => {
+        if (!active && !disabled)
+          e.currentTarget.style.background = "transparent";
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function Separator(): JSX.Element {
+  return (
+    <div
+      style={{
+        height: 1,
+        background: "var(--vscode-menu-separatorBackground, var(--vscode-panel-border))",
+        margin: "4px 0",
+      }}
+    />
   );
 }
 
