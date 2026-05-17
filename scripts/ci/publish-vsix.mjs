@@ -109,10 +109,17 @@ function vsixPath(artifactsDir, target, version) {
 
 function publishOnce(opts, target, vsix, vscePat) {
   // Build argv that NEVER contains the PAT. The PAT travels via env.
+  //
+  // Note: `--target` is NOT passed here — the per-platform target is
+  // already baked into the VSIX file itself (vsce package --target
+  // <triple> embeds it as metadata). vsce publish rejects the
+  // combination of --packagePath + --target with
+  //   "Both options not supported simultaneously: 'packagePath' and 'target'"
+  // The `target` parameter is still tracked locally for logging.
+  void target;
   const argv = [
     "publish",
     "--no-dependencies",
-    "--target", target,
     "--packagePath", vsix,
   ];
   if (opts.channel === "pre-release") argv.push("--pre-release");
