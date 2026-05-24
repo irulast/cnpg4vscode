@@ -19,7 +19,17 @@ const extensionOptions = {
   entryPoints: ["src/extension.ts"],
   outfile: "dist/extension.js",
   format: "cjs",
-  external: ["vscode", "better-sqlite3", "@kubernetes/client-node"],
+  // `vscode` is provided by the extension host — always external.
+  // `better-sqlite3` is a native module referenced only in a design
+  // comment (never imported); keep it external so esbuild doesn't try
+  // to resolve its .node binary if it's ever added.
+  // `@kubernetes/client-node` and `pg` ARE bundled (NOT external): the
+  // VSIX is packaged with `vsce package --no-dependencies`, so anything
+  // left external would be absent at runtime and crash `activate()`
+  // with a module-not-found error (symptom: "command not found" +
+  // "no data provider registered" on a Marketplace install, while dev
+  // works because dev has node_modules on disk).
+  external: ["vscode", "better-sqlite3"],
 };
 
 // Notebook renderer runs inside the renderer iframe (browser context, ESM).
