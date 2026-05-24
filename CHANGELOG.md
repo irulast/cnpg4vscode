@@ -7,27 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned (scoped, not yet implemented — see [tasks.md § Phase 8.5](specs/001-cnpg-cluster-explorer/tasks.md))
+Nothing yet. Next planned: an `@vscode/test-electron` + testcontainers
+e2e harness and performance-budget enforcement (the tasks blocked on
+test infra in spec 001).
+
+## [1.0.3] — 2026-05-24
+
+### Changed
+
+- Removed the `preview` flag from the Marketplace listing — the
+  extension is past its first public release and is no longer
+  preview-quality.
+- Added an extension icon (square logo) so the Marketplace listing and
+  the Extensions view show branding instead of the default placeholder.
+- `galleryBanner` color + theme set for a coherent listing header.
+- Restructured this CHANGELOG into proper Keep-a-Changelog versioned
+  sections (it had accumulated under a single `[Unreleased]` block) so
+  the Marketplace "Changelog" tab reads cleanly.
+
+## [1.0.2] — 2026-05-24
+
+### Fixed
+
+- **Extension failed to activate on Marketplace installs** —
+  `@kubernetes/client-node` was marked `external` in the esbuild config
+  but the VSIX is packaged with `vsce package --no-dependencies`, so the
+  module was absent at runtime. The first `require('@kubernetes/client-node')`
+  threw, crashing `activate()` before any command or tree-data provider
+  registered (symptoms: "command 'cnpg.refresh' not found" and "There is
+  no data provider registered that can provide view data"). Dev (F5)
+  masked it because `node_modules` is present on disk there. Fixed by
+  bundling the Kubernetes client into `dist/extension.js`.
+
+## [1.0.1] — 2026-05-24
+
+### Fixed
+
+- **Clusters pane empty on Marketplace installs** — `activationEvents`
+  only listed `onLanguage:sql`, so opening the CloudNativePG view didn't
+  activate the extension (and thus never registered the tree-data
+  provider). Added explicit `onView:cnpg.clusters`, `onView:cnpg.schema`,
+  and `onLanguage:postgres` activation events. (Superseded as the full
+  fix by 1.0.2, which addressed the underlying activation crash.)
+
+## [1.0.0] — 2026-05-17
+
+First public release on the VS Code Marketplace, shipped as six
+per-platform VSIXs (linux-x64/arm64, darwin-x64/arm64, win32-x64/arm64)
+via an automated GitHub Actions pipeline.
+
+### Added (Grid Editor — DB-IDE-parity table editing)
 
 - **Grid Editor surface (FR-037 / FR-038 / FR-039)**. A dedicated
   `vscode.WebviewPanel` per open table, hosting glide-data-grid + React,
-  delivering full DB-IDE-parity tabular editing: virtualized rendering
-  for ≥100k rows, per-type cell editors (text / number / boolean / date /
-  jsonb / enum), per-column sort + filter + hide + freeze, dirty-row
-  tracking with bulk Apply, Add Row / Delete Selected, FK navigation
-  (right-click an FK cell → opens a new Grid Editor tab on the
-  referenced table), workspace-persisted layout state, theme-aware via
-  `--vscode-*` variables. Two entrypoints: right-click a TABLE in the
+  delivering DB-IDE-parity tabular editing: canvas-rendered virtualized
+  rows, per-PG-type cell editors (text / number / boolean / date /
+  jsonb popout / enum dropdown), per-column sort + filter, dirty-row
+  tracking with a single bulk **Apply** that previews every parameterized
+  `UPDATE` before running, per-row apply results, FK navigation
+  (right-click an FK cell → opens a new pre-filtered Grid Editor tab on
+  the referenced table), CSV / JSON / SQL-INSERT export (every emitted
+  statement routed through the credential-redaction chokepoint),
+  workspace-persisted layout (column widths / sort / filters per
+  `(cluster, database, schema, table)`), and tab hibernation via a
+  `WebviewPanelSerializer`. Two entrypoints: right-click a table in the
   Schema view → **CNPG: Open in Grid Editor**, or the command palette
-  via **CNPG: Open Table in Grid Editor...**.
+  via **CNPG: Open Table in Grid Editor...**. CSP locked to
+  `default-src 'none'` with a per-load nonce; no external CDNs, no
+  `unsafe-eval`. Read-only gate still applies — Write mode required, and
+  views / matviews / PK-less tables stay read-only.
 
-  Diverges from the FR-035 "no webviews" simplification — see
-  [research §6 REVISED 2026-05-16](specs/001-cnpg-cluster-explorer/research.md)
-  and [plan.md § Complexity Tracking (2026-05-16)](specs/001-cnpg-cluster-explorer/plan.md)
-  for the rationale (every serious DB IDE uses a dedicated grid tab;
-  notebook outputs can't structurally deliver cell editing). The
-  lightweight NotebookRendererProvider (T104) stays as the inline
-  "just scanning" view; the Grid Editor opens on demand for editing.
+### Added (CI/CD — spec 002)
+
+- **Automated release pipeline** (GitHub Actions). Every PR is gated by
+  typecheck + lint + unit + contract tests + production build + webview
+  CSP audit + dependency-licence audit + security-advisory scan. Pushing
+  a `v*` tag triggers a publish workflow (preflight → wait-for-CI →
+  Marketplace collision check → build six per-platform VSIXs → publish →
+  GitHub Release with assets + auto-generated changelog). Stable channel
+  for bare SemVer tags, pre-release channel for `-pre.N` tags. The PAT
+  never appears in any log line. See `docs/release-process.md`.
 
 ### Added
 

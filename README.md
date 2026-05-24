@@ -8,8 +8,7 @@ and visualize relationships with ER diagrams. No `kubectl`
 shell-outs, no credential persistence to disk, native VS Code surfaces
 throughout.
 
-> **Status**: **v1.0.0 live on the VS Code Marketplace** as of
-> 2026-05-17. Install with
+> **Status**: **Live on the VS Code Marketplace.** Install with
 > `code --install-extension Irulast.cnpg4vscode` or search
 > "CloudNativePG" in the **Extensions** view. The full feature set
 > across spec 001's six user stories is implemented end-to-end and
