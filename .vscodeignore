@@ -36,6 +36,7 @@ dist/**/*.map
 !languages/**
 !syntaxes/**
 !snippets/**
+!assets/**
 !README.md
 !CHANGELOG.md
 !LICENSE
